@@ -112,6 +112,8 @@ class Session:
         "tracking_state", "active_tracks", "next_track_id",
         "frame_counter", "initialized", "full_tracking_data",
         "accumulated_tracks", "accumulated_visibles", "last_used", "lock",
+        # new_tracks (growing) state:
+        "generations", "track_birth", "frame_history",
     )
 
     def __init__(self):
@@ -125,6 +127,15 @@ class Session:
         self.accumulated_visibles = []
         self.last_used = time.time()
         self.lock = threading.Lock()   # L2: serializes requests WITHIN this session
+        # --- new_tracks (growing point set) ----------------------------------
+        # One TAPNext "generation" per seed: {state, ids, pos, vis, streak}.
+        # ids are GLOBAL track ids (column i == track id i, assigned in birth
+        # order); track_birth[i] is the first frame of that point.
+        self.generations = []
+        self.track_birth = []
+        # backfill: [(rgb256_float01, h, w)] oldest first — needed to re-run a
+        # new generation over the session prefix for backfilled trajectories
+        self.frame_history = []
 
 
 def _sniff_video_ext(b: bytes) -> str:
@@ -205,6 +216,9 @@ class PipelineService(tapnext_pb2_grpc.PipelineServiceServicer):
         sess.full_tracking_data = []
         sess.accumulated_tracks = []
         sess.accumulated_visibles = []
+        sess.generations = []
+        sess.track_birth = []
+        sess.frame_history = []
         sess.last_used = time.time()
         logging.info("Tracking session state reset")
 
@@ -278,6 +292,12 @@ class PipelineService(tapnext_pb2_grpc.PipelineServiceServicer):
                 for s in held:
                     s.tracking_state = None
                     s.initialized = False
+                    # growing sessions: their generation states are CUDA tensors
+                    # too. Drop everything — the session re-seeds generation 0
+                    # on its next frame (a soft reset, same as the legacy path)
+                    s.generations = []
+                    s.track_birth = []
+                    s.frame_history = []
                 logging.info(
                     f"Parking model to CPU after _IDLE_TIMEOUT "
                     f"({len(held)} session(s) also drop their tracking state)")
@@ -364,11 +384,16 @@ class PipelineService(tapnext_pb2_grpc.PipelineServiceServicer):
                 self._last_request_time = time.time()
                 self._promote_to_gpu()
 
+                growing = bool(parameters.get("new_tracks", False))
+
                 def track_frame_in_session(frame_np):
                     """Feed one decoded frame into this session's tracker (None-safe)."""
                     if frame_np is None:
                         return
-                    tracks, visibles = self._track_frame(frame_np, parameters, sess)
+                    if growing:
+                        tracks, visibles = self._track_frame_growing(frame_np, parameters, sess)
+                    else:
+                        tracks, visibles = self._track_frame(frame_np, parameters, sess)
                     if tracks is not None:
                         sess.accumulated_tracks.append(tracks)
                         sess.accumulated_visibles.append(visibles)
@@ -398,43 +423,89 @@ class PipelineService(tapnext_pb2_grpc.PipelineServiceServicer):
                     for frame_np in self._decode_video(bytes(video_bytes), frame_step, max_frames):
                         track_frame_in_session(frame_np)
 
+                growing_nmax = 0
                 response_data = {}
                 if sess.accumulated_tracks:
-                    tracks_tensor = torch.stack([torch.from_numpy(t) for t in sess.accumulated_tracks])
-                    visibles_tensor = torch.stack([torch.from_numpy(v) for v in sess.accumulated_visibles])
+                    if growing:
+                        # Rows have variable width (the point set grew over the
+                        # session). Pad to a common width: not-yet-born columns
+                        # are 0.0 + visibles=0 in `tracks`/`visibles`, NaN in
+                        # `observation_matrix`. `visibles` is the validity mask;
+                        # `data.birth_frames` (one per track id, column i ==
+                        # track id i) + the config's `birth_hist` separate
+                        # "not yet born" from "born but lost".
+                        F = len(sess.accumulated_tracks)
+                        growing_nmax = max(tf.shape[0] for tf in sess.accumulated_tracks)
+                        t_arr = np.zeros((F, growing_nmax, 2), dtype=np.float32)
+                        v_arr = np.zeros((F, growing_nmax), dtype=np.float32)
+                        p_arr = np.full((2 * F, growing_nmax), np.nan, dtype=np.float32)
+                        for f in range(F):
+                            tf = sess.accumulated_tracks[f]
+                            vf = sess.accumulated_visibles[f]
+                            n = tf.shape[0]
+                            t_arr[f, :n] = tf
+                            v_arr[f, :n] = vf
+                            p_arr[2 * f, :n] = tf[:, 1]
+                            p_arr[2 * f + 1, :n] = tf[:, 0]
+                        tracks_tensor = torch.from_numpy(t_arr)
+                        visibles_tensor = torch.from_numpy(v_arr)
+                        p_tensor = torch.from_numpy(p_arr)
+                    else:
+                        tracks_tensor = torch.stack([torch.from_numpy(t) for t in sess.accumulated_tracks])
+                        visibles_tensor = torch.stack([torch.from_numpy(v) for v in sess.accumulated_visibles])
+                        # Build the Tomasi-Kanade matrix (uniform-width rows only;
+                        # the growing path above builds its padded equivalent)
+                        P = build_observation_matrix([t for t, _ in sess.full_tracking_data])
+                        p_tensor = torch.tensor(P) if P is not None else None
+
                     response_data["tracks"] = wrap_value(self._serialize_tensor(tracks_tensor))
                     response_data["visibles"] = wrap_value(self._serialize_tensor(visibles_tensor))
 
-                    # Build observation matrix from full accumulated tracking data
-                    P = build_observation_matrix([t for t, _ in sess.full_tracking_data])
-                    if P is not None:
+                    if p_tensor is not None:
                         response_data["observation_matrix"] = wrap_value(
-                            self._serialize_tensor(torch.tensor(P)))
+                            self._serialize_tensor(p_tensor))
+
+                    if growing:
+                        # the per-track birth list lives in DATA (a typed
+                        # float-list — rendered compact by client/webui), not
+                        # in the config JSON: a few hundred raw ints there
+                        # would flood any human-facing view; the config keeps
+                        # only the compact birth_hist summary
+                        response_data["birth_frames"] = wrap_value(
+                            [float(b) for b in sess.track_birth])
 
                 logging.info(
                     f"session={sid} frames={len(sess.accumulated_tracks)} "
                     f"runtime={time.time() - start_time:.3f}s "
                     f"active_sessions={self._count_sessions()}")
 
-                return tapnext_pb2.Envelope(
-                    config_json=json.dumps({
-                        "tapnext": {
-                            "status": "done",
-                            "session": sid,
-                            "frames_processed": len(sess.accumulated_tracks),
-                            "runtime": time.time() - start_time,
-                            "num_points": sess.accumulated_tracks[0].shape[0] if sess.accumulated_tracks else 0,
-                            # Declared payload encoding (generic visionist_client contract):
-                            # all tensor responses are torch.save()-format bytes.
-                            "encoding": {
-                                "tracks": "torch",
-                                "visibles": "torch",
-                                "observation_matrix": "torch",
-                            }
-                        }
-                    }),
-                    data=response_data
-                )
+                section = {
+                    "status": "done",
+                    "session": sid,
+                    "frames_processed": len(sess.accumulated_tracks),
+                    "runtime": time.time() - start_time,
+                    "num_points": growing_nmax if growing
+                        else (sess.accumulated_tracks[0].shape[0] if sess.accumulated_tracks else 0),
+                    # Declared payload encoding (generic visionist_client contract):
+                    # all tensor responses are torch.save()-format bytes.
+                    "encoding": {
+                        "tracks": "torch",
+                        "visibles": "torch",
+                        "observation_matrix": "torch",
+                    }
+                }
+                if growing:
+                    section["new_tracks"] = True
+                    section["num_generations"] = len(sess.generations)
+                    # compact growth summary (frame -> how many points were
+                    # seeded then); the full per-track list is data.birth_frames
+                    born_frames = sorted(set(sess.track_birth))
+                    section["birth_hist"] = {
+                        str(int(f)): sess.track_birth.count(f) for f in born_frames
+                    }
+
+                return tapnext_pb2.Envelope(config_json=json.dumps({"tapnext": section}),
+                                            data=response_data)
 
         except Exception as e:
             logging.exception(f"Error in Process: {e}")
@@ -495,6 +566,201 @@ class PipelineService(tapnext_pb2_grpc.PipelineServiceServicer):
                 except OSError:
                     pass
         return frames
+
+    def _track_frame_growing(self, frame_np, parameters, sess):
+        """``new_tracks: true`` path: the point set *grows* across the session.
+
+        Each seed is one TAPNext **generation** (its own ``tracking_state``, so
+        surviving points keep their long-range LRU memory — no re-anchoring,
+        unlike a merged re-init). When visible coverage thins out, empty grid
+        cells get fresh points, starting new generations with fresh track ids.
+
+        Per frame: step all generations → optionally retire fully-invisible
+        ones (``retire_after_invisible``) → every ``add_interval`` frames re-seed
+        empty grid cells (occupancy vs THIS frame's visible 256-space
+        positions; capped by ``max_new_per_seed`` and ``max_total_points``).
+        ``backfill`` seeds a generation over the whole stored session prefix
+        (O(k) cost) so its recorded trajectory starts at frame 0; otherwise a
+        new point simply does not exist before its birth frame.
+
+        Returns (tracks (N, 2) in original resolution, ``(y, x)`` order; N ==
+        ``len(sess.track_birth)`` — all columns including retired/not-yet-born,
+        which are 0.0 there with ``visibles`` False), keeping column i ==
+        track id i across the whole session.
+        """
+        if frame_np.ndim == 2:
+            rgb = cv2.cvtColor(frame_np, cv2.COLOR_GRAY2RGB)
+        else:
+            rgb = cv2.cvtColor(frame_np, cv2.COLOR_BGR2RGB)
+        orig_h, orig_w = frame_np.shape[:2]
+        rgb256 = np.ascontiguousarray(
+            cv2.resize(rgb, (256, 256)).astype(np.float32) / 255.0)
+
+        cell = int(parameters.get("cell_size", 20))
+        min_dist = float(parameters.get("min_dist", 4.0))
+        add_interval = max(1, int(parameters.get("add_interval", 5)))
+        max_new = int(parameters.get("max_new_per_seed", 256))
+        max_total = int(parameters.get("max_total_points", 4096))
+        retire_after = int(parameters.get("retire_after_invisible", 0))
+        backfill = bool(parameters.get("backfill", False))
+        gsize = int(parameters.get("grid_size", 32))
+
+        if backfill:
+            # 256-space frames + that frame's original size (kept so backfilled
+            # columns can be scaled back correctly per frame)
+            sess.frame_history.append((rgb256, orig_h, orig_w))
+
+        frame_t = torch.from_numpy(rgb256).unsqueeze(0).unsqueeze(0).to(self._device)
+        scale_y, scale_x = orig_h / 256.0, orig_w / 256.0
+
+        with torch.no_grad():
+            use_amp = (self._device == "cuda")
+            with torch.amp.autocast(self._device, dtype=torch.float16, enabled=use_amp):
+                # --------------------------------------------------------- seed 0
+                # First growing frame of the session (nothing has ever been
+                # seeded here; note: NOT "no generations" — if they all retire
+                # we must fall through to the normal capped seed logic below,
+                # never a silent full-grid reseed that bypasses the budgets).
+                if len(sess.track_birth) == 0:
+                    xs = np.linspace(10.0, 246.0, gsize)
+                    ys = np.linspace(10.0, 246.0, gsize)
+                    gx, gy = np.meshgrid(xs, ys, indexing="xy")
+                    cells = np.stack([gx.ravel(), gy.ravel()], axis=1).astype(np.float32)
+                    tracks, _, vl, state = self._model(
+                        video=frame_t, query_points=self._grid_query_points(cells))
+                    pos256 = tracks[0, 0].cpu().numpy().astype(np.float32)
+                    # real TAPNext returns visible_logits with a trailing logit
+                    # channel: (B, T, N, 1) — normalize to 1-D here
+                    vis = (vl[0, 0] > 0).cpu().numpy().reshape(-1)
+                    base = len(sess.track_birth)
+                    sess.track_birth.extend([0] * pos256.shape[0])
+                    sess.generations.append({
+                        "state": state,
+                        "ids": list(range(base, base + pos256.shape[0])),
+                        "pos": pos256, "vis": vis, "streak": 0,
+                    })
+                else:
+                    k = len(sess.accumulated_tracks)   # this frame's 0-based index
+
+                    # ----------------------------------- retire dead (pre-step)
+                    # Streaks were accumulated up to now; a generation that just
+                    # crossed the threshold is dropped BEFORE this frame's step,
+                    # so its previously recorded positions remain but it costs
+                    # nothing more from here on.
+                    if retire_after > 0:
+                        dead = [g for g in sess.generations if g["streak"] >= retire_after]
+                        sess.generations = [g for g in sess.generations if g not in dead]
+                        for g in dead:
+                            g["state"] = None   # let the LRU cache's tensors go
+                            logging.info(
+                                f"Retired generation {len(g['ids'])} pts after "
+                                f"{retire_after} fully-invisible frames")
+
+                    # ------------------------------------------------- step all
+                    vis_pos256 = []   # 256-space, model output order (y, x)
+                    for gen in sess.generations:
+                        tr, _, vl, state = self._model(video=frame_t, state=gen["state"])
+                        gen["state"] = state
+                        gen["pos"] = tr[0, 0].cpu().numpy().astype(np.float32)
+                        gen["vis"] = (vl[0, 0] > 0).cpu().numpy().reshape(-1)
+                        if retire_after > 0:
+                            gen["streak"] = 0 if gen["vis"].any() else gen["streak"] + 1
+                        if gen["vis"].any():
+                            vis_pos256.append(gen["pos"][gen["vis"]])
+
+                    # ------------------------------------- re-seed empty cells
+                    room = max_total - len(sess.track_birth)
+                    if k > 0 and k % add_interval == 0 and room > 0:
+                        # occupancy is measured in (x, y); the model's output
+                        # order is (y, x) — flip before comparing to cells
+                        existing = (np.concatenate(
+                            [p[:, ::-1] for p in vis_pos256], axis=0)
+                            if vis_pos256 else np.zeros((0, 2), dtype=np.float32))
+                        new_pts = self._empty_cells(existing, cell, min_dist)
+                        new_pts = new_pts[:min(max_new, room)]
+                        if new_pts.shape[0] > 0:
+                            n_hist = len(sess.frame_history)
+                            do_back = (backfill and n_hist == k + 1 and n_hist > 1)
+                            if do_back:
+                                # New generation over the whole stored prefix —
+                                # the new points get a recorded trajectory back
+                                # to frame 0, written into the already-accumulated
+                                # rows (they gain one column each).
+                                prefix = np.stack(
+                                    [fh[0] for fh in sess.frame_history]).astype(np.float32)
+                                vid = torch.from_numpy(
+                                    np.ascontiguousarray(prefix)).unsqueeze(0).to(self._device)
+                                trf, _, vlf, state = self._model(
+                                    video=vid,
+                                    query_points=self._grid_query_points(new_pts, t=float(n_hist - 1)))
+                                pos256 = trf[0, n_hist - 1].cpu().numpy().astype(np.float32)
+                                vis = (vlf[0, n_hist - 1] > 0).cpu().numpy().reshape(-1)
+                                for f in range(k):
+                                    _, fh_h, fh_w = sess.frame_history[f]
+                                    pos_f = trf[0, f].cpu().numpy().astype(np.float32)
+                                    pos_f[:, 0] *= fh_h / 256.0
+                                    pos_f[:, 1] *= fh_w / 256.0
+                                    vis_f = (vlf[0, f] > 0).cpu().numpy().reshape(-1)
+                                    # the new points were not born yet at these
+                                    # earlier frames — one column appended per
+                                    # existing column, i.e. append ROWS:
+                                    sess.accumulated_tracks[f] = np.vstack(
+                                        [sess.accumulated_tracks[f], pos_f])
+                                    sess.accumulated_visibles[f] = np.concatenate(
+                                        [sess.accumulated_visibles[f], vis_f])
+                                    tp, tv = sess.full_tracking_data[f]
+                                    sess.full_tracking_data[f] = (
+                                        np.vstack([tp, pos_f]),
+                                        np.concatenate([tv, vis_f]))
+                            else:
+                                tr, _, vl, state = self._model(
+                                    video=frame_t, query_points=self._grid_query_points(new_pts))
+                                pos256 = tr[0, 0].cpu().numpy().astype(np.float32)
+                                vis = (vl[0, 0] > 0).cpu().numpy().reshape(-1)
+                            base = len(sess.track_birth)
+                            n_new = pos256.shape[0]
+                            sess.track_birth.extend([k] * n_new)
+                            sess.generations.append({
+                                "state": state,
+                                "ids": list(range(base, base + n_new)),
+                                "pos": pos256, "vis": vis, "streak": 0,
+                            })
+                            logging.info(f"Re-seeded {n_new} new points "
+                                         f"(generation {len(sess.generations)}) at frame {k}")
+
+                # ---------------------------------- row in track-id (column) order
+                n_total = len(sess.track_birth)
+                pos_all = np.zeros((n_total, 2), dtype=np.float32)
+                vis_all = np.zeros(n_total, dtype=bool)
+                for gen in sess.generations:
+                    ids = np.asarray(gen["ids"], dtype=np.int64)
+                    pos_all[ids] = gen["pos"]
+                    vis_all[ids] = gen["vis"]
+                # 256-space (x, y) -> original resolution (y, x), as _track_frame
+                pos_all[:, 0] *= scale_y
+                pos_all[:, 1] *= scale_x
+                return pos_all, vis_all
+
+    def _grid_query_points(self, points_xy, t=0.0):
+        """(n, 2) 256-space (x, y) points -> TAPNext query_points [1, n, 3] (t, x, y)."""
+        n = points_xy.shape[0]
+        q = np.empty((n, 3), dtype=np.float32)
+        q[:, 0] = t
+        q[:, 1] = points_xy[:, 0]
+        q[:, 2] = points_xy[:, 1]
+        return torch.from_numpy(q).unsqueeze(0).to(self._device)
+
+    def _empty_cells(self, existing, cell_size, min_dist):
+        """Centers of the 256x256 grid cells (step ``cell_size``) that hold no
+        ``existing`` (x, y) point within ``min_dist`` — the candidates to seed."""
+        ys = np.arange(cell_size // 2, 256, cell_size)
+        xs = np.arange(cell_size // 2, 256, cell_size)
+        gy, gx = np.meshgrid(ys, xs, indexing="ij")
+        centers = np.stack([gx.ravel(), gy.ravel()], axis=1).astype(np.float32)
+        if existing.shape[0] == 0:
+            return centers
+        d2 = ((centers[:, None, :] - existing[None, :, :]) ** 2).sum(axis=2)
+        return centers[d2.min(axis=1) >= min_dist * min_dist]
 
     def _track_frame(self, frame_np, parameters, sess):
         if frame_np.ndim == 2:

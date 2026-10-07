@@ -49,6 +49,54 @@ parameters:
   commands:
   - track
   description: 0 = no cap
+- name: new_tracks
+  type: boolean
+  default: false
+  commands:
+  - track
+  description: 'growing point set: 1 = re-seed points as they die (then use the knobs below); 0 = legacy fixed grid'
+- name: cell_size
+  type: integer
+  default: 20
+  commands:
+  - track
+  description: 'growing: grid cell size in 256² model space — EMPTY cells get re-seeded (smaller = finer coverage)'
+- name: min_dist
+  type: integer
+  default: 4
+  commands:
+  - track
+  description: 'growing: a cell is occupied if a visible point is closer than this (px, 256-space)'
+- name: add_interval
+  type: integer
+  default: 5
+  commands:
+  - track
+  description: 'growing: re-seed check every N frames'
+- name: max_new_per_seed
+  type: integer
+  default: 256
+  commands:
+  - track
+  description: 'growing: cap on new points per seed'
+- name: max_total_points
+  type: integer
+  default: 4096
+  commands:
+  - track
+  description: 'growing: hard cap on total track ids (growth stops when hit)'
+- name: retire_after_invisible
+  type: integer
+  default: 0
+  commands:
+  - track
+  description: 'growing: drop a point-group after N fully-invisible frames (0 = never)'
+- name: backfill
+  type: integer
+  default: 0
+  commands:
+  - track
+  description: 'growing: 1 = new points get trajectories back to frame 0 (costs O(prefix) per seed)'
 data:
   in:
   - field: images
@@ -69,10 +117,16 @@ data:
     codec: torch
     shape: '[2F, N]'
     description: x and y interleaved per frame, NaN where a point is absent
+  - field: birth_frames
+    codec: identity
+    shape: '[P]'
+    when: 'new_tracks=true'
+    description: per-track birth frame (column i of tracks = track id i); not-yet-born columns are 0.0 with visibles=0
 constraints:
 - '`images` and `video` are mutually exclusive; neither gives empty_request.'
 - Outputs are cumulative across calls within a session.
 - The declared encoding always lists observation_matrix even when the field is absent.
+- 'growing mode (`new_tracks: true`): the point set may have GROWN per frame — slice tracks with the visibles mask; `data.birth_frames` separates not-yet-born from born-but-lost.'
 - Sessions expire (TAPNEXT_SESSION_TTL, default 1800s).
 links:
   upstream: https://github.com/google-deepmind/tapnet
