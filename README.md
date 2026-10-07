@@ -4,7 +4,7 @@
 
 
 This is a companion repository of SIPG/ISR's 
-[VisionIST](https://github.com/jpcosteira/VisionIST). Together with [VisionIST_matlab](https://github.com/jpcosteira/VisionIST_matlab) allows the local buildup of any type of pipeline using components with specifications of the  ["AI-on-Demand"](http://aiod.eu) platform. We call such components **boxes**.
+[VisionIST](https://github.com/jpcosteira/VisionIST). Together with [VisionIST_matlab](https://github.com/jpcosteira/VisionIST_matlab) allows the local buildup of any type of processing "pipeline" running components in a distributed way. Each component follows the specifications of the  ["AI-on-Demand"](http://aiod.eu) platform. We call such components **boxes** or **caixinhas**.
 
 **VisionIST_Library** is the registry of **boxes**: independent, Dockerized inference services that all
 speak one gRPC envelope. Contribute a box here; assemble a fleet from it
