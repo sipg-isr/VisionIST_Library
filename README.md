@@ -1,10 +1,7 @@
-
 # VisionIST Library
 
 
-
-This is a companion repository of SIPG/ISR's 
-[VisionIST](https://github.com/jpcosteira/VisionIST). Together with [VisionIST_matlab](https://github.com/jpcosteira/VisionIST_matlab) allows the local buildup of any type of processing "pipeline" running components in a distributed way. Each component follows the specifications of the  ["AI-on-Demand"](http://aiod.eu) platform. We call such components **boxes** or **caixinhas**.
+This is a companion repository of SIPG/ISR's [VisionIST](https://github.com/sipg-isr/VisionIST). Together with [VisionIST_matlab](https://github.com/sipg-isr/VisionIST_matlab) allows the local buildup of any type of processing "pipeline" running components in a distributed way. Each component follows the specifications of the  ["AI-on-Demand"](http://aiod.eu) platform. We call such components **boxes** or **caixinhas**.
 
 **VisionIST_Library** is the registry of **boxes**: independent, Dockerized inference services that all
 speak one gRPC envelope. Contribute a box here; assemble a fleet from it
@@ -14,17 +11,16 @@ anywhere.
 service PipelineService { rpc Process( Envelope ) returns ( Envelope ); }
 ```
 
-This repository holds **recipes and metadata** — a Dockerfile, the service
-source, a manifest. The **images** live in a container registry (Docker Hub,
-`sipgisr/`). So running a fleet never means building a hundred boxes, and
-cloning the registry is not a prerequisite for using it.
+This repository holds **recipes and metadata** — a Dockerfile, the service source, a manifest. The **images** live in a container registry (Docker Hub,
+`sipgisr/`). So running a fleet never means building a hundred boxes, and cloning the registry is not a prerequisite for using it.
 
 The client, the webui, the docs and a reference fleet live in
-[VisionIST](https://github.com/jpcosteira/VisionIST). Together with VisionIST_Matlab
+[VisionIST](https://github.com/sipg-isr/VisionIST) and we make also a  [VisionIST_Matlab](https://github.com/sipg-isr/VisionIST_matlab) client.
 
 Visit our  [Docker Hub repositories](https://hub.docker.com/repositories/sipgisr). VisionIST componentes are named sipgisr/visionist-name-of-the-box
 
 Want your own registry that the VisionIST client can still use? See [fork.md](fork.md).
+
 ## Use a box
 
 ```bash
