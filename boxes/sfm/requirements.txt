@@ -1,0 +1,8 @@
+grpcio
+protobuf
+grpcio-reflection
+grpcio-status
+# sfm_core only needs torch (SVDs on small matrices) — the CPU wheel is
+# installed from the PyTorch CPU index in docker/Dockerfile (no CUDA libs).
+torch>=2.0.0
+numpy

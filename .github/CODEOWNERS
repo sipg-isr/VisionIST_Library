@@ -16,6 +16,7 @@
 /boxes/open_clip/                       @jpcosteira
 /boxes/opencv/                          @jpcosteira
 /boxes/sbert/                           @jpcosteira
+/boxes/sfm/                             @jpcosteira
 /boxes/tapnext/                         @jpcosteira
 /boxes/unimatch/                        @jpcosteira
 /boxes/vggt/                            @jpcosteira

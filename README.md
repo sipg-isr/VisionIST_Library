@@ -64,6 +64,7 @@ checkout: `--index` also takes the published
 | [`open_clip`](boxes/open_clip) | `open_clip` | gpu-or-cpu | OpenCLIP image and text embeddings from any open_clip model and pretrained tag, with cosine similarity and zero-shot probabilities | `clip` `embeddings` `multimodal` `zero-shot` |
 | [`opencv`](boxes/opencv) | `opencv` | gpu-or-cpu | Classic feature extraction and matching: SIFT/ORB via FLANN, or SuperPoint/DISK via LightGlue, plus a RANSAC fundamental matrix | `classical` `features` `matching` |
 | [`sbert`](boxes/sbert) | `sbert` | gpu-or-cpu | Sentence-BERT text embeddings and their pairwise similarity | `embeddings` `text` |
+| [`sfm`](boxes/sfm) | `sfm` | cpu | SfM: camera poses + 3D points from feature tracks and monocular depth, with partial (missing) tracks | `depth` `geometry` `reconstruction` `sfm` |
 | [`tapnext`](boxes/tapnext) | `tapnext` | gpu | TAPNext point tracking with the Tomasi-Kanade observation matrix | `points` `sfm` `tracking` |
 | [`unimatch`](boxes/unimatch) | `unimatch` | gpu-or-cpu | Unified dense matching: optical flow, stereo disparity, and multi-view depth | `depth` `flow` `geometry` `stereo` |
 | [`vggt`](boxes/vggt) | `vggt` | gpu | VGGT multi-view 3D reconstruction: world points, per-view depth, camera poses, and a GLB | `geometry` `multiview` `reconstruction` |

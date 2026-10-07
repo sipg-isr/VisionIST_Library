@@ -1,0 +1,125 @@
+# sfm - VisionIST box manifest
+# Validated against registry/schema.json by CI.
+# Everything downstream (index, README table, build matrix,
+# fleet generator) is generated from this file.
+name: sfm
+key: sfm
+version: 0.1.0
+summary: 'SfM: camera poses + 3D points from feature tracks and monocular depth, with partial (missing) tracks'
+runtime: cpu
+status: experimental
+tags:
+- geometry
+- reconstruction
+- sfm
+- depth
+image:
+  repository: sipgisr/visionist-sfm
+  registries:
+  - dockerhub
+  platforms:
+  - linux/amd64
+maintainers:
+- github: jpcosteira
+  name: Joao Paulo Costeira
+  email: jpc@isr.tecnico.ulisboa.pt
+commands:
+  values:
+  - reconstruct
+  - reset
+  default: reconstruct
+parameters:
+- name: solver
+  type: string
+  default: completion
+  enum: [completion, pairs, linear]
+  description: completion = rank-4 matrix completion + RANSAC (default); pairs = chained 2-frame solves; linear = 2-frame rotations + global LM.
+- name: iters
+  type: integer
+  default: 100
+  description: completion iterations or LM iterations (linear).
+- name: num_scale_iters
+  type: integer
+  default: 4
+- name: rank
+  type: integer
+  default: 4
+  description: rank of the completion model.
+- name: removal_iters
+  type: array
+  default: [10, 20, 30, 40]
+  description: 'completion iterations at which RANSAC rejects tracks ([] = never).'
+- name: min_obs
+  type: integer
+  default: 2
+  description: min observations per point / frame after a removal.
+- name: offset_mode
+  type: string
+  default: normalize
+  enum: [normalize, estimate, zero]
+- name: seed
+  type: integer
+  default: 42
+  description: RANSAC sampling seed (reproducible).
+- name: intrinsics_normalized
+  type: boolean
+  default: false
+  description: 'mode A: intrinsics are normalized (MoGe-style fractions) and scaled by the depth-map size.'
+- name: dtype
+  type: string
+  default: float32
+  enum: [float32, float64]
+- name: min_points
+  type: integer
+  default: 8
+  description: error out if fewer points survive.
+data:
+  in:
+  - field: tracks
+    kind: b
+    description: '(2F, P) pixel coords (x row, then y row per frame); NaN = not seen. Mode A.'
+  - field: depths
+    kind: b
+    description: '(F, H, W) monocular depth maps; bilinear-sampled at the tracks. Mode A.'
+  - field: intrinsics
+    kind: b
+    description: '(3, 3) or (F, 3, 3) camera matrix, shared or per frame. Mode A.'
+  - field: W_mat
+    kind: b
+    description: '(3F, P) homogeneous rays [x, y, 1] per frame. Mode B (wins over mode A).'
+  - field: lambda_mat
+    kind: b
+    description: '(F, P) monocular depth per track; NaN = missing. Mode B.'
+  out:
+  - field: cameras
+    codec: numpy
+    shape: (F', 3, 4)
+    description: per-frame [R | t]; first surviving frame is the reference (R = I, t = 0)
+  - field: points
+    codec: numpy
+    shape: (P', 3)
+  - field: frame_ids
+    codec: numpy
+    shape: (F',)
+  - field: point_ids
+    codec: numpy
+    shape: (P',)
+  - field: observed
+    codec: numpy
+    shape: (F', P')
+    description: which entries were observed (the rest were completed)
+  - field: completed_matrix
+    codec: numpy
+    shape: (3F', P')
+  - field: depth_scales
+    codec: numpy
+    shape: (F',)
+  - field: depth_offsets
+    codec: numpy
+    shape: (F',)
+constraints:
+- 'Send one input mode: mode A (tracks + depths + intrinsics) or mode B (W_mat + lambda_mat); if both, mode B wins.'
+- 'Every array is an np.save (.npy) blob; a torch.save tensor is also accepted.'
+- 'Pure CPU, stateless; `reconstruct` is the default command and `reset` is a no-op.'
+links:
+  upstream: visionist_client.track_stream (lightglue) + a depth box (moge, unimatch)

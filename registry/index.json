@@ -1,7 +1,7 @@
 {
   "schema": "registry/schema.json",
   "generated_by": "tools/build_index.py",
-  "count": 13,
+  "count": 14,
   "boxes": [
     {
       "name": "clip",
@@ -753,6 +753,118 @@
       "path": "boxes/sbert"
     },
     {
+      "name": "sfm",
+      "key": "sfm",
+      "version": "0.1.0",
+      "summary": "SfM: camera poses + 3D points from feature tracks and monocular depth, with partial (missing) tracks",
+      "runtime": "cpu",
+      "status": "experimental",
+      "tags": [
+        "depth",
+        "geometry",
+        "reconstruction",
+        "sfm"
+      ],
+      "commands": [
+        "reconstruct",
+        "reset"
+      ],
+      "default_command": "reconstruct",
+      "session": null,
+      "maintainers": [
+        "jpcosteira"
+      ],
+      "image": {
+        "repository": "sipgisr/visionist-sfm",
+        "registries": [
+          "dockerhub"
+        ],
+        "approx_size_gb": null,
+        "refs": {
+          "dockerhub": "docker.io/sipgisr/visionist-sfm:0.1.0"
+        }
+      },
+      "data": {
+        "in": [
+          {
+            "field": "tracks",
+            "kind": "b",
+            "description": "(2F, P) pixel coords (x row, then y row per frame); NaN = not seen. Mode A."
+          },
+          {
+            "field": "depths",
+            "kind": "b",
+            "description": "(F, H, W) monocular depth maps; bilinear-sampled at the tracks. Mode A."
+          },
+          {
+            "field": "intrinsics",
+            "kind": "b",
+            "description": "(3, 3) or (F, 3, 3) camera matrix, shared or per frame. Mode A."
+          },
+          {
+            "field": "W_mat",
+            "kind": "b",
+            "description": "(3F, P) homogeneous rays [x, y, 1] per frame. Mode B (wins over mode A)."
+          },
+          {
+            "field": "lambda_mat",
+            "kind": "b",
+            "description": "(F, P) monocular depth per track; NaN = missing. Mode B."
+          }
+        ],
+        "out": [
+          {
+            "field": "cameras",
+            "codec": "numpy",
+            "shape": "(F', 3, 4)",
+            "description": "per-frame [R | t]; first surviving frame is the reference (R = I, t = 0)"
+          },
+          {
+            "field": "points",
+            "codec": "numpy",
+            "shape": "(P', 3)"
+          },
+          {
+            "field": "frame_ids",
+            "codec": "numpy",
+            "shape": "(F',)"
+          },
+          {
+            "field": "point_ids",
+            "codec": "numpy",
+            "shape": "(P',)"
+          },
+          {
+            "field": "observed",
+            "codec": "numpy",
+            "shape": "(F', P')",
+            "description": "which entries were observed (the rest were completed)"
+          },
+          {
+            "field": "completed_matrix",
+            "codec": "numpy",
+            "shape": "(3F', P')"
+          },
+          {
+            "field": "depth_scales",
+            "codec": "numpy",
+            "shape": "(F',)"
+          },
+          {
+            "field": "depth_offsets",
+            "codec": "numpy",
+            "shape": "(F',)"
+          }
+        ]
+      },
+      "constraints": [
+        "Send one input mode: mode A (tracks + depths + intrinsics) or mode B (W_mat + lambda_mat); if both, mode B wins.",
+        "Every array is an np.save (.npy) blob; a torch.save tensor is also accepted.",
+        "Pure CPU, stateless; `reconstruct` is the default command and `reset` is a no-op."
+      ],
+      "path": "boxes/sfm"
+    },
+    {
       "name": "tapnext",
       "key": "tapnext",
       "version": "0.1.0",
@@ -819,6 +931,13 @@
             "codec": "torch",
             "shape": "[2F, N]",
             "description": "x and y interleaved per frame, NaN where a point is absent"
+          },
+          {
+            "field": "birth_frames",
+            "codec": "identity",
+            "shape": "[P]",
+            "when": "new_tracks=true",
+            "description": "per-track birth frame (column i of tracks = track id i); not-yet-born columns are 0.0 with visibles=0"
           }
         ]
       },
@@ -826,6 +945,7 @@
         "`images` and `video` are mutually exclusive; neither gives empty_request.",
         "Outputs are cumulative across calls within a session.",
         "The declared encoding always lists observation_matrix even when the field is absent.",
+        "growing mode (`new_tracks: true`): the point set may have GROWN per frame \u2014 slice tracks with the visibles mask; `data.birth_frames` separates not-yet-born from born-but-lost.",
         "Sessions expire (TAPNEXT_SESSION_TTL, default 1800s)."
       ],
       "path": "boxes/tapnext"
