@@ -1,7 +1,11 @@
 name: publish box
 
-# Tag <box>-v<version> (e.g. clip-v0.2.0) to publish one box.
-# Boxes version independently; the tag must agree with boxes/<box>/box.yaml.
+# Push the GIT tag <box>-v<version> (e.g. clip-v0.2.0) to publish one box.
+# Boxes version independently; the git tag must agree with boxes/<box>/box.yaml.
+#
+# The IMAGE it pushes is always sipgisr/visionist-<box>:latest - image names
+# in this project carry no version (tools/_registry.py IMAGE_TAG). The git tag
+# records which recipe produced the current :latest.
 on:
   push:
     tags: ["*-v*"]

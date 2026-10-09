@@ -6,6 +6,7 @@ the knowledge is in boxes/<name>/box.yaml.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
 
@@ -54,9 +55,20 @@ def load_all(root: pathlib.Path) -> list[dict]:
     return [load_manifest(d) for d in box_dirs(root)]
 
 
+#: The only tag this registry publishes or pulls. A box's `version` in its
+#: manifest is the version of the RECIPE - it drives the release git tag and
+#: the "has this box changed?" checks - but it never lands in an image name.
+#: One moving tag per box means a fleet compose file never goes stale, and
+#: `docker compose pull` is the whole upgrade procedure.
+IMAGE_TAG = "latest"
+
+
 def image_ref(manifest: dict, registry: str = "dockerhub",
-              version: str | None = None) -> str:
+              tag: str | None = None) -> str:
     """Full pullable reference for a box on one registry.
+
+    Always ``:latest`` unless a caller explicitly overrides ``tag``: image
+    names in this project carry no version (see :data:`IMAGE_TAG`).
 
     ``ghcr`` keeps the repository path as given; ``dockerhub`` flattens it,
     because Docker Hub has exactly one level of namespace - sipgisr/visionist-clip
@@ -66,11 +78,57 @@ def image_ref(manifest: dict, registry: str = "dockerhub",
         raise ValueError(f"unknown registry {registry!r} "
                          f"(known: {', '.join(sorted(REGISTRY_HOSTS))})")
     repo = manifest["image"]["repository"]
-    tag = version or manifest["version"]
+    tag = tag or IMAGE_TAG
     if registry == "dockerhub":
         org, _, name = repo.rpartition("/")
         repo = f"{org.replace('-', '').replace('/', '')}/{name}" if org else name
     return f"{REGISTRY_HOSTS[registry]}/{repo}:{tag}"
+
+
+#: Where the host-port ledger starts. Only used when the ledger is empty.
+BASE_PORT = 9061
+
+#: The ledger itself: box name -> permanent host port.
+PORTS_FILE = "registry/ports.json"
+
+
+def load_ports(root: pathlib.Path) -> dict:
+    """Read registry/ports.json. Missing file -> an empty ledger."""
+    path = root / PORTS_FILE
+    if not path.is_file():
+        return {"generated_by": "tools/build_index.py", "base_port": BASE_PORT,
+                "ports": {}}
+    return json.loads(path.read_text())
+
+
+def assign_ports(ledger: dict, manifests: list[dict]) -> tuple[dict, list[str]]:
+    """Give every box a host port, assigning sequentially to new ones.
+
+    Ports are issued in ARRIVAL order, not alphabetical order: a box keeps the
+    port it was first given, forever, and a new box takes the next port after
+    the highest ever issued. Alphabetical assignment moved every box after the
+    newcomer, which silently repointed every client config and every
+    hand-written host list in the fleet.
+
+    A retired box's port is NOT recycled - reusing it would point an old client
+    at a different box, which fails as a wrong answer rather than as a refused
+    connection.
+
+    Returns the updated ledger and the names of the boxes newly assigned.
+    """
+    ports = dict(ledger.get("ports") or {})
+    base = int(ledger.get("base_port") or BASE_PORT)
+    new = []
+    for m in sorted(manifests, key=lambda x: x["name"]):
+        if m["name"] in ports:
+            continue
+        ports[m["name"]] = max(ports.values(), default=base - 1) + 1
+        new.append(m["name"])
+    out = dict(ledger)
+    out.setdefault("generated_by", "tools/build_index.py")
+    out["base_port"] = base
+    out["ports"] = ports
+    return out, new
 
 
 def registries_of(manifest: dict) -> list[str]:

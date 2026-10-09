@@ -4,7 +4,17 @@
   "title": "VisionIST box manifest",
   "description": "box.yaml - the registry entry for one box. Everything downstream (the index, the README table, the CI build matrix, the webui definition, the fleet generator) is generated from these, so nothing is maintained by hand twice.",
   "type": "object",
-  "required": ["name", "key", "version", "summary", "runtime", "image", "maintainers", "commands", "data"],
+  "required": [
+    "name",
+    "key",
+    "version",
+    "summary",
+    "runtime",
+    "image",
+    "maintainers",
+    "commands",
+    "data"
+  ],
   "additionalProperties": false,
   "properties": {
     "name": {
@@ -29,15 +39,24 @@
       "maxLength": 160,
       "description": "One line for the registry table."
     },
-    "description": {"type": "string"},
+    "description": {
+      "type": "string"
+    },
     "runtime": {
       "type": "string",
-      "enum": ["cpu", "gpu", "gpu-or-cpu", "cuda-only"],
+      "enum": [
+        "cpu",
+        "gpu",
+        "gpu-or-cpu",
+        "cuda-only"
+      ],
       "description": "cuda-only means the box refuses to run on CPU; gpu-or-cpu means it prefers CUDA but works without."
     },
     "image": {
       "type": "object",
-      "required": ["repository"],
+      "required": [
+        "repository"
+      ],
       "additionalProperties": false,
       "properties": {
         "repository": {
@@ -47,18 +66,38 @@
         },
         "registries": {
           "type": "array",
-          "items": {"type": "string", "enum": ["ghcr", "dockerhub"]},
+          "items": {
+            "type": "string",
+            "enum": [
+              "ghcr",
+              "dockerhub"
+            ]
+          },
           "minItems": 1,
-          "default": ["dockerhub"],
+          "default": [
+            "dockerhub"
+          ],
           "description": "Where CI publishes this box. A box present on only one registry is still usable - the fleet generator falls back per box."
         },
         "platforms": {
           "type": "array",
-          "items": {"type": "string"},
-          "default": ["linux/amd64"]
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "linux/amd64"
+          ]
         },
-        "build_args": {"type": "object", "additionalProperties": {"type": "string"}},
-        "approx_size_gb": {"type": "number", "description": "Rough pulled size, so a user can see what a fleet will cost before pulling it."}
+        "build_args": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "approx_size_gb": {
+          "type": "number",
+          "description": "Rough pulled size, so a user can see what a fleet will cost before pulling it."
+        }
       }
     },
     "maintainers": {
@@ -66,66 +105,118 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["github"],
+        "required": [
+          "github"
+        ],
         "additionalProperties": false,
         "properties": {
-          "github": {"type": "string"},
-          "name": {"type": "string"},
-          "email": {"type": "string"}
+          "github": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
         }
       },
       "description": "Drives CODEOWNERS: these people review changes to this box."
     },
     "tags": {
       "type": "array",
-      "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
       "description": "Free-form categories. Tags, not directories: a box can carry several, and re-tagging never moves a path."
     },
     "commands": {
       "type": "object",
-      "required": ["values"],
+      "required": [
+        "values"
+      ],
       "additionalProperties": false,
       "properties": {
-        "values": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-        "default": {"type": "string", "description": "Applied when the request names no command."}
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "default": {
+          "type": "string",
+          "description": "Applied when the request names no command."
+        }
       }
     },
     "session": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "key": {"type": "string", "default": "session_id"},
+        "key": {
+          "type": "string",
+          "default": "session_id"
+        },
         "location": {
           "type": "string",
-          "enum": ["section", "parameters"],
+          "enum": [
+            "section",
+            "parameters"
+          ],
           "description": "Where the box reads the session id from. The fleet's clients need this and it is NOT uniform: yolo and tapnext read the section top level, lightglue reads parameters."
         },
-        "cumulative": {"type": "boolean", "description": "true when a reply covers every frame the session has seen, not only this call's."},
-        "note": {"type": "string"}
+        "cumulative": {
+          "type": "boolean",
+          "description": "true when a reply covers every frame the session has seen, not only this call's."
+        },
+        "note": {
+          "type": "string"
+        }
       }
     },
     "parameters": {
       "type": "array",
       "description": "Keys the box reads from the `parameters` object inside its config section.",
-      "items": {"$ref": "#/$defs/field"}
+      "items": {
+        "$ref": "#/$defs/field"
+      }
     },
     "section_fields": {
       "type": "array",
       "description": "Keys the box reads from the TOP of its config section rather than from `parameters`. Rare but real: lang_sam takes `text_prompt` there. A client that puts them in the wrong place gets a silent default, so this has to be declared.",
-      "items": {"$ref": "#/$defs/field"}
+      "items": {
+        "$ref": "#/$defs/field"
+      }
     },
     "data": {
       "type": "object",
-      "required": ["in", "out"],
+      "required": [
+        "in",
+        "out"
+      ],
       "additionalProperties": false,
       "properties": {
-        "in": {"type": "array", "items": {"$ref": "#/$defs/dataIn"}},
-        "out": {"type": "array", "items": {"$ref": "#/$defs/dataOut"}}
+        "in": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dataIn"
+          }
+        },
+        "out": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dataOut"
+          }
+        }
       }
     },
     "constraints": {
       "type": "array",
-      "items": {"type": "string"},
+      "items": {
+        "type": "string"
+      },
       "description": "Things a caller gets wrong otherwise: 'needs exactly 2 images', 'images and video are mutually exclusive'."
     },
     "assets": {
@@ -133,13 +224,26 @@
       "description": "Test fixtures too big for the repo. CI enforces a size cap on committed files; anything larger is fetched from here at test time.",
       "items": {
         "type": "object",
-        "required": ["path", "url"],
+        "required": [
+          "path",
+          "url"
+        ],
         "additionalProperties": false,
         "properties": {
-          "path": {"type": "string"},
-          "url": {"type": "string", "format": "uri"},
-          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-          "bytes": {"type": "integer"}
+          "path": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "bytes": {
+            "type": "integer"
+          }
         }
       }
     },
@@ -147,53 +251,161 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "upstream": {"type": "string", "description": "The model or library this box wraps."},
-        "paper": {"type": "string"},
-        "license": {"type": "string"}
+        "upstream": {
+          "type": "string",
+          "description": "The model or library this box wraps."
+        },
+        "paper": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        }
       }
     },
     "status": {
       "type": "string",
-      "enum": ["experimental", "stable", "deprecated"],
+      "enum": [
+        "experimental",
+        "stable",
+        "deprecated"
+      ],
       "default": "experimental"
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How a fleet should contain this box. The profile is a name, not a list of flags, so the compose settings live in one place (tools/make_fleet.py) rather than being copied into every manifest.",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "enum": [
+            "standard",
+            "untrusted-code"
+          ],
+          "default": "standard",
+          "description": "untrusted-code marks a box that executes what callers send it. The fleet generator then emits read_only, a tmpfs, cap_drop, no-new-privileges and memory/PID limits for it."
+        },
+        "mem_limit": {
+          "type": "string",
+          "description": "Compose mem_limit override, e.g. '4g'."
+        },
+        "pids_limit": {
+          "type": "integer"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
     }
   },
   "$defs": {
     "field": {
       "type": "object",
-      "required": ["name", "type"],
+      "required": [
+        "name",
+        "type"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": {"type": "string"},
-        "type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]},
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object"
+          ]
+        },
         "default": {},
-        "enum": {"type": "array"},
-        "required": {"type": "boolean", "default": false},
-        "commands": {"type": "array", "items": {"type": "string"}, "description": "Only meaningful for these commands."},
-        "description": {"type": "string"}
+        "enum": {
+          "type": "array"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Only meaningful for these commands."
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
     "dataIn": {
       "type": "object",
-      "required": ["field", "kind"],
+      "required": [
+        "field",
+        "kind"
+      ],
       "additionalProperties": false,
       "properties": {
-        "field": {"type": "string"},
-        "kind": {"type": "string", "enum": ["b", "s", "f", "bb", "ss", "ff"], "description": "The Value oneof this field is wrapped as."},
-        "required": {"type": "boolean", "default": false},
-        "description": {"type": "string"}
+        "field": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "b",
+            "s",
+            "f",
+            "bb",
+            "ss",
+            "ff"
+          ],
+          "description": "The Value oneof this field is wrapped as."
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
     "dataOut": {
       "type": "object",
-      "required": ["field", "codec"],
+      "required": [
+        "field",
+        "codec"
+      ],
       "additionalProperties": false,
       "properties": {
-        "field": {"type": "string"},
-        "codec": {"type": "string", "enum": ["identity", "json", "numpy", "torch", "zstd_pickle"], "description": "The encoding the box DECLARES in its reply config; a client decodes with it."},
-        "shape": {"type": "string"},
-        "when": {"type": "string", "description": "Condition under which the field is present at all."},
-        "description": {"type": "string"}
+        "field": {
+          "type": "string"
+        },
+        "codec": {
+          "type": "string",
+          "enum": [
+            "identity",
+            "json",
+            "numpy",
+            "torch",
+            "zstd_pickle"
+          ],
+          "description": "The encoding the box DECLARES in its reply config; a client decodes with it."
+        },
+        "shape": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string",
+          "description": "Condition under which the field is present at all."
+        },
+        "description": {
+          "type": "string"
+        }
       }
     }
   }

@@ -15,6 +15,7 @@
 /boxes/moge/                            @jpcosteira
 /boxes/open_clip/                       @jpcosteira
 /boxes/opencv/                          @jpcosteira
+/boxes/pycv/                            @jpcosteira
 /boxes/sbert/                           @jpcosteira
 /boxes/sfm/                             @jpcosteira
 /boxes/tapnext/                         @jpcosteira

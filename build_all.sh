@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build every box that is missing from Docker Hub, tagged exactly as the
-# VisionIST fleet compose file expects (sipgisr/visionist-<name>:<version>).
+# VisionIST fleet compose file expects (sipgisr/visionist-<name>:latest).
+# Image names carry no version - the manifest's `version` is the recipe's,
+# not the image's (see tools/_registry.py IMAGE_TAG).
 #
 # Usage:  ./build_all.sh                 # build the 8 missing fleet boxes
 #         ./build_all.sh clip sbert      # only these boxes
@@ -31,9 +33,7 @@ for name in $BOXES; do
   [ -f "$dir/box.yaml" ] || { echo "!! $name: no boxes/$name/box.yaml — skipping"; fail+=("$name (missing)"); continue; }
 
   img_repo="visionist-${name//_/-}"
-  version=$(python3 -c "import yaml;print(yaml.safe_load(open('$dir/box.yaml'))['version'])" 2>/dev/null) \
-    || version=$(grep -E '^version:' "$dir/box.yaml" | awk '{print $2}')
-  tag="sipgisr/$img_repo:$version"
+  tag="sipgisr/$img_repo:latest"
 
   if [ "$SKIP_HUB" = 1 ] && hub_has "sipgisr/$img_repo"; then
     echo "== $name: on Docker Hub as sipgisr/$img_repo — skipping"

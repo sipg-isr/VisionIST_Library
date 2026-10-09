@@ -1,0 +1,120 @@
+# pycv - VisionIST box manifest
+# Validated against registry/schema.json by CI.
+# Everything downstream (index, ports, README table, build matrix,
+# fleet generator) is generated from this file.
+name: pycv
+key: pycv
+version: 0.1.0
+summary: Runs user-supplied Python against OpenCV - a script or a one-line expression in, named arrays out
+status: experimental
+
+runtime: cpu
+tags:
+  - scripting
+  - classical
+  - opencv
+
+image:
+  repository: sipgisr/visionist-pycv
+  registries:
+    - dockerhub
+  platforms:
+    - linux/amd64
+  approx_size_gb: 0.4
+
+maintainers:
+  - github: jpcosteira
+    name: Joao Paulo Costeira
+    email: jpc@isr.tecnico.ulisboa.pt
+
+commands:
+  values:
+    - run
+    - eval
+    - reset
+  default: run
+
+parameters:
+  - name: timeout
+    type: number
+    default: 30
+    commands: [run, eval]
+    description: Wall-clock seconds the script may take. Capped at 600; past it the process group is killed and the reply carries timed_out.
+  - name: entry
+    type: string
+    default: main.py
+    commands: [run]
+    description: Which of the sent files is executed. It must be among data.names.
+  - name: max_memory_mb
+    type: integer
+    default: 2048
+    commands: [run, eval]
+    description: RLIMIT_AS for the script, so a runaway allocation fails as a clean MemoryError. 0 disables it; the container's own memory limit is the real backstop.
+  - name: max_output_mb
+    type: integer
+    default: 256
+    commands: [run, eval]
+    description: Biggest file the script may write (RLIMIT_FSIZE).
+  - name: decode_images
+    type: boolean
+    default: true
+    commands: [run, eval]
+    description: true hands vs.images as decoded BGR arrays; false leaves them as the original bytes.
+
+section_fields:
+  - name: args
+    type: object
+    commands: [run, eval]
+    description: Free-form JSON handed to the script as vs.args. This is where named scalar arguments belong - the Value oneof has no room for them.
+
+data:
+  in:
+    - field: code
+      kind: bb
+      required: true
+      description: 'run: the .py files, in the same order as data.names. eval: a single string (kind s) holding an expression or a few statements.'
+    - field: names
+      kind: ss
+      description: 'run only: one file name per entry in data.code; one of them must be the entry point.'
+    - field: images
+      kind: bb
+      description: JPEG/PNG bytes; the script sees them as vs.images (decoded) and vs.raw (original bytes).
+    - field: texts
+      kind: ss
+      description: Literal strings, as vs.texts.
+    - field: numbers
+      kind: ff
+      description: Numbers, as vs.numbers.
+    - field: inputs
+      kind: b
+      description: One .npz of named arrays, as vs.inputs. A MATLAB .mat is also read when the image was built with scipy, which the published image is not.
+  out:
+    - field: stdout
+      codec: identity
+      description: The script's standard output, truncated at 64 000 characters. Always present.
+    - field: stderr
+      codec: identity
+      description: The script's standard error, including the traceback when it fails. Always present.
+    - field: result
+      codec: numpy
+      when: eval, when the expression returns one value
+      description: Named by the script instead whenever it calls vs.emit. A tuple is unpacked into result_0, result_1, ...
+constraints:
+  - THIS BOX EXECUTES CODE IT IS SENT. Anyone who can reach its port can run anything its user can. Keep it on a trusted network; never publish the port.
+  - Field names come from the script's vs.emit calls, so data.out above is indicative - the reply's `encoding` map always names every field and its codec.
+  - A value that is neither an ndarray, bytes, nor JSON-serializable is refused; the box never pickles on a script's behalf.
+  - The image pins OpenCV below 5.0, because user code is overwhelmingly written against the 4.x API.
+  - Stateless. `reset` is accepted and does nothing; each request gets a fresh directory that is deleted afterwards.
+
+# This box runs code it is sent, so a fleet should contain it. The generator
+# turns the profile into compose settings; see tools/make_fleet.py and the
+# README's "Read this first".
+security:
+  profile: untrusted-code
+  mem_limit: 4g
+  pids_limit: 256
+  note: Bounds an accident - a runaway loop, a huge allocation, a fork bomb. It is not a sandbox against someone who means harm; keep the port on a trusted network.
+
+links:
+  upstream: https://opencv.org
+  license: Apache-2.0

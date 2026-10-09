@@ -52,9 +52,16 @@ from `box.yaml`. Do not maintain a list of boxes anywhere else.
 ```bash
 python3 tools/validate_boxes.py my_box     # schema, naming, files, fixture sizes
 python3 tools/sync_contract.py             # refresh protos/
-python3 tools/build_index.py               # regenerate index, README, CODEOWNERS
+python3 tools/build_index.py               # regenerate index, ports, README, CODEOWNERS
 python3 tools/check_docs.py my_box         # your README builds and runs the way CI does
 ```
+
+`build_index.py` also issues your box its **host port** and appends it to
+`registry/ports.json`. Ports go out in arrival order, so yours is simply the
+next one after the highest ever issued — never an alphabetical slot, which
+would have shifted every box after you and silently repointed everyone's
+client config. Commit `registry/ports.json` with the rest; the port is
+permanent from then on, and a retired box's port is never reused.
 
 Then build it and run the shared contract test:
 

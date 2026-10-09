@@ -1,0 +1,51 @@
+// The VisionIST envelope. One interface, every box.
+//
+// THIS FILE IS THE SOURCE OF TRUTH. Each box carries a generated copy at
+// boxes/<name>/protos/pipeline.proto so its directory stays self-contained;
+// tools/sync_contract.py writes those copies and CI fails any PR where one
+// has drifted. Do not edit a box's copy.
+//
+// Changing this file is a wire-format change for every box in the registry at
+// once. Field numbers are permanent: add, never renumber or reuse.
+
+syntax = "proto3";
+
+package pipeline;
+
+// Repeated wrappers. proto3 has no repeated field inside a oneof, so each
+// list kind needs its own message.
+message FloatList  { repeated float  values = 1; }
+message StringList { repeated string values = 1; }
+message BytesList  { repeated bytes  values = 1; }
+
+// One named payload field. The box declares in its reply config how to decode
+// a `b`/`bb` payload (identity, json, numpy, torch, zstd_pickle), so the
+// transport stays dumb about content.
+message Value {
+  oneof kind {
+    bytes      b   = 1;   // a single blob: an image, a pickle, a tensor, a file
+    string     s   = 2;
+    float      f   = 5;
+    BytesList  bb  = 6;   // the usual shape for a list of images
+    StringList ss  = 7;
+    FloatList  ff  = 10;
+  }
+}
+
+// The universal envelope, in both directions.
+message Envelope {
+  // JSON object. The request carries a section named after the box
+  // ({"yolo": {...}}); the reply carries the same section with a "status" of
+  // done | empty_request | error, and the declared payload "encoding".
+  string config_json = 1;
+
+  // Named payload fields. Field names are the box's business, not the
+  // transport's.
+  map<string, Value> data = 2;
+}
+
+// The universal service interface. One RPC: a box is a function from an
+// Envelope to an Envelope.
+service PipelineService {
+  rpc Process(Envelope) returns (Envelope);
+}

@@ -53,26 +53,32 @@ checkout: `--index` also takes the published
 ## The boxes
 
 <!-- BEGIN BOXES -->
-| Box | Key | Runtime | What it does | Tags |
-|---|---|---|---|---|
-| [`clip`](boxes/clip) | `clip` | gpu | CLIP image and text embeddings with their cross-modal similarity | `embeddings` `multimodal` |
-| [`d4rt`](boxes/d4rt) | `d4rt` | gpu | OpenD4RT 4D reconstruction and tracking - 3D point tracks, point clouds and camera poses from a video | `depth` `dynamic-3d` `geometry` `reconstruction` `tracking` |
-| [`features`](boxes/features) | `features` | cpu | SIFT keypoints in the SIFT-Extractor layout: (2+128) x N, annotated JPEGs, MATLAB .mat | `classical` `features` `sift` |
-| [`lang_sam`](boxes/lang_sam) | `lang_sam` | gpu | Text-guided segmentation with LangSAM: phrases in, masks out | `grounding` `language` `segmentation` |
-| [`lightglue`](boxes/lightglue) | `lightglue` | gpu-or-cpu | SuperPoint/DISK features and LightGlue matching, pairwise or as a sliding-window stream | `features` `matching` `tracking` |
-| [`moge`](boxes/moge) | `moge` | cuda-only | MoGe-3 monocular geometry: metric depth, point map, normals, intrinsics | `depth` `geometry` `monocular` |
-| [`open_clip`](boxes/open_clip) | `open_clip` | gpu-or-cpu | OpenCLIP image and text embeddings from any open_clip model and pretrained tag, with cosine similarity and zero-shot probabilities | `clip` `embeddings` `multimodal` `zero-shot` |
-| [`opencv`](boxes/opencv) | `opencv` | gpu-or-cpu | Classic feature extraction and matching: SIFT/ORB via FLANN, or SuperPoint/DISK via LightGlue, plus a RANSAC fundamental matrix | `classical` `features` `matching` |
-| [`sbert`](boxes/sbert) | `sbert` | gpu-or-cpu | Sentence-BERT text embeddings and their pairwise similarity | `embeddings` `text` |
-| [`sfm`](boxes/sfm) | `sfm` | cpu | SfM: camera poses + 3D points from feature tracks and monocular depth, with partial (missing) tracks | `depth` `geometry` `reconstruction` `sfm` |
-| [`tapnext`](boxes/tapnext) | `tapnext` | gpu | TAPNext point tracking with the Tomasi-Kanade observation matrix | `points` `sfm` `tracking` |
-| [`unimatch`](boxes/unimatch) | `unimatch` | gpu-or-cpu | Unified dense matching: optical flow, stereo disparity, and multi-view depth | `depth` `flow` `geometry` `stereo` |
-| [`vggt`](boxes/vggt) | `vggt` | gpu | VGGT multi-view 3D reconstruction: world points, per-view depth, camera poses, and a GLB | `geometry` `multiview` `reconstruction` |
-| [`yolo`](boxes/yolo) | `yolo` | gpu-or-cpu | YOLO object detection with always-on tracking, on images or video | `detection` `tracking` |
+| Box | Key | Runtime | Port | What it does | Tags |
+|---|---|---|---|---|---|
+| [`clip`](boxes/clip) | `clip` | gpu | 9061 | CLIP image and text embeddings with their cross-modal similarity | `embeddings` `multimodal` |
+| [`d4rt`](boxes/d4rt) | `d4rt` | gpu | 9072 | OpenD4RT 4D reconstruction and tracking - 3D point tracks, point clouds and camera poses from a video | `depth` `dynamic-3d` `geometry` `reconstruction` `tracking` |
+| [`features`](boxes/features) | `features` | cpu | 9071 | SIFT keypoints in the SIFT-Extractor layout: (2+128) x N, annotated JPEGs, MATLAB .mat | `classical` `features` `sift` |
+| [`lang_sam`](boxes/lang_sam) | `lang_sam` | gpu | 9064 | Text-guided segmentation with LangSAM: phrases in, masks out | `grounding` `language` `segmentation` |
+| [`lightglue`](boxes/lightglue) | `lightglue` | gpu-or-cpu | 9069 | SuperPoint/DISK features and LightGlue matching, pairwise or as a sliding-window stream | `features` `matching` `tracking` |
+| [`moge`](boxes/moge) | `moge` | cuda-only | 9067 | MoGe-3 monocular geometry: metric depth, point map, normals, intrinsics | `depth` `geometry` `monocular` |
+| [`open_clip`](boxes/open_clip) | `open_clip` | gpu-or-cpu | 9073 | OpenCLIP image and text embeddings from any open_clip model and pretrained tag, with cosine similarity and zero-shot probabilities | `clip` `embeddings` `multimodal` `zero-shot` |
+| [`opencv`](boxes/opencv) | `opencv` | gpu-or-cpu | 9065 | Classic feature extraction and matching: SIFT/ORB via FLANN, or SuperPoint/DISK via LightGlue, plus a RANSAC fundamental matrix | `classical` `features` `matching` |
+| [`pycv`](boxes/pycv) | `pycv` | cpu | 9075 | Runs user-supplied Python against OpenCV - a script or a one-line expression in, named arrays out | `classical` `opencv` `scripting` |
+| [`sbert`](boxes/sbert) | `sbert` | gpu-or-cpu | 9062 | Sentence-BERT text embeddings and their pairwise similarity | `embeddings` `text` |
+| [`sfm`](boxes/sfm) | `sfm` | cpu | 9074 | SfM: camera poses + 3D points from feature tracks and monocular depth, with partial (missing) tracks | `depth` `geometry` `reconstruction` `sfm` |
+| [`tapnext`](boxes/tapnext) | `tapnext` | gpu | 9063 | TAPNext point tracking with the Tomasi-Kanade observation matrix | `points` `sfm` `tracking` |
+| [`unimatch`](boxes/unimatch) | `unimatch` | gpu-or-cpu | 9070 | Unified dense matching: optical flow, stereo disparity, and multi-view depth | `depth` `flow` `geometry` `stereo` |
+| [`vggt`](boxes/vggt) | `vggt` | gpu | 9066 | VGGT multi-view 3D reconstruction: world points, per-view depth, camera poses, and a GLB | `geometry` `multiview` `reconstruction` |
+| [`yolo`](boxes/yolo) | `yolo` | gpu-or-cpu | 9068 | YOLO object detection with always-on tracking, on images or video | `detection` `tracking` |
 <!-- END BOXES -->
 
 `runtime` reads: `cpu` runs anywhere · `gpu-or-cpu` prefers CUDA but works
 without · `gpu` wants one · `cuda-only` refuses to run without one.
+
+`Port` is the box's permanent host port in a fleet, issued once in the order
+boxes arrived and kept in [`registry/ports.json`](registry/ports.json). A new
+box takes the next port after the highest ever issued, so no existing box ever
+moves and a box answers on the same port in every fleet anyone generates.
 
 ## Layout
 
@@ -88,6 +94,7 @@ boxes/<name>/
   README.md          the authoritative request shape for that box
 registry/
   index.json         GENERATED from every box.yaml
+  ports.json         the host-port ledger - APPEND-ONLY, one port per box
   schema.json        what a valid manifest is
 template_box/        copy this to start a box
 tools/               sync, validate, index, fetch assets, make a fleet

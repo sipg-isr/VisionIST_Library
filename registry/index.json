@@ -1,11 +1,12 @@
 {
   "schema": "registry/schema.json",
   "generated_by": "tools/build_index.py",
-  "count": 14,
+  "count": 15,
   "boxes": [
     {
       "name": "clip",
       "key": "clip",
+      "port": 9061,
       "version": "0.1.0",
       "summary": "CLIP image and text embeddings with their cross-modal similarity",
       "runtime": "gpu",
@@ -20,6 +21,9 @@
       ],
       "default_command": "encode",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -30,7 +34,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-clip:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-clip:latest"
         }
       },
       "data": {
@@ -77,6 +81,7 @@
     {
       "name": "d4rt",
       "key": "d4rt",
+      "port": 9072,
       "version": "0.1.0",
       "summary": "OpenD4RT 4D reconstruction and tracking - 3D point tracks, point clouds and camera poses from a video",
       "runtime": "gpu",
@@ -96,6 +101,9 @@
       ],
       "default_command": "track",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -106,7 +114,7 @@
         ],
         "approx_size_gb": 12,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-d4rt:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-d4rt:latest"
         }
       },
       "data": {
@@ -232,6 +240,7 @@
     {
       "name": "features",
       "key": "features",
+      "port": 9071,
       "version": "0.1.0",
       "summary": "SIFT keypoints in the SIFT-Extractor layout: (2+128) x N, annotated JPEGs, MATLAB .mat",
       "runtime": "cpu",
@@ -247,6 +256,9 @@
       ],
       "default_command": "extract",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -257,7 +269,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-features:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-features:latest"
         }
       },
       "data": {
@@ -310,6 +322,7 @@
     {
       "name": "lang_sam",
       "key": "lang_sam",
+      "port": 9064,
       "version": "0.1.0",
       "summary": "Text-guided segmentation with LangSAM: phrases in, masks out",
       "runtime": "gpu",
@@ -325,6 +338,9 @@
       ],
       "default_command": "segment",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -335,7 +351,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-lang-sam:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-lang-sam:latest"
         }
       },
       "data": {
@@ -366,6 +382,7 @@
     {
       "name": "lightglue",
       "key": "lightglue",
+      "port": 9069,
       "version": "0.1.0",
       "summary": "SuperPoint/DISK features and LightGlue matching, pairwise or as a sliding-window stream",
       "runtime": "gpu-or-cpu",
@@ -387,6 +404,9 @@
         "location": "parameters",
         "note": "Only `stream` is stateful. A reset without a session id clears every session."
       },
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -397,7 +417,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-lightglue:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-lightglue:latest"
         }
       },
       "data": {
@@ -473,6 +493,7 @@
     {
       "name": "moge",
       "key": "moge",
+      "port": 9067,
       "version": "0.1.0",
       "summary": "MoGe-3 monocular geometry: metric depth, point map, normals, intrinsics",
       "runtime": "cuda-only",
@@ -488,6 +509,9 @@
       ],
       "default_command": "infer",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -498,7 +522,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-moge:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-moge:latest"
         }
       },
       "data": {
@@ -528,6 +552,7 @@
     {
       "name": "open_clip",
       "key": "open_clip",
+      "port": 9073,
       "version": "0.1.0",
       "summary": "OpenCLIP image and text embeddings from any open_clip model and pretrained tag, with cosine similarity and zero-shot probabilities",
       "runtime": "gpu-or-cpu",
@@ -545,6 +570,9 @@
       ],
       "default_command": "encode",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -555,7 +583,7 @@
         ],
         "approx_size_gb": 7,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-open-clip:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-open-clip:latest"
         }
       },
       "data": {
@@ -617,6 +645,7 @@
     {
       "name": "opencv",
       "key": "opencv",
+      "port": 9065,
       "version": "0.1.0",
       "summary": "Classic feature extraction and matching: SIFT/ORB via FLANN, or SuperPoint/DISK via LightGlue, plus a RANSAC fundamental matrix",
       "runtime": "gpu-or-cpu",
@@ -632,6 +661,9 @@
       ],
       "default_command": "match",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -642,7 +674,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-opencv:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-opencv:latest"
         }
       },
       "data": {
@@ -694,8 +726,110 @@
       "path": "boxes/opencv"
     },
     {
+      "name": "pycv",
+      "key": "pycv",
+      "port": 9075,
+      "version": "0.1.0",
+      "summary": "Runs user-supplied Python against OpenCV - a script or a one-line expression in, named arrays out",
+      "runtime": "cpu",
+      "status": "experimental",
+      "tags": [
+        "classical",
+        "opencv",
+        "scripting"
+      ],
+      "commands": [
+        "run",
+        "eval",
+        "reset"
+      ],
+      "default_command": "run",
+      "session": null,
+      "security": {
+        "profile": "untrusted-code",
+        "mem_limit": "4g",
+        "pids_limit": 256,
+        "note": "Bounds an accident - a runaway loop, a huge allocation, a fork bomb. It is not a sandbox against someone who means harm; keep the port on a trusted network."
+      },
+      "maintainers": [
+        "jpcosteira"
+      ],
+      "image": {
+        "repository": "sipgisr/visionist-pycv",
+        "registries": [
+          "dockerhub"
+        ],
+        "approx_size_gb": 0.4,
+        "refs": {
+          "dockerhub": "docker.io/sipgisr/visionist-pycv:latest"
+        }
+      },
+      "data": {
+        "in": [
+          {
+            "field": "code",
+            "kind": "bb",
+            "required": true,
+            "description": "run: the .py files, in the same order as data.names. eval: a single string (kind s) holding an expression or a few statements."
+          },
+          {
+            "field": "names",
+            "kind": "ss",
+            "description": "run only: one file name per entry in data.code; one of them must be the entry point."
+          },
+          {
+            "field": "images",
+            "kind": "bb",
+            "description": "JPEG/PNG bytes; the script sees them as vs.images (decoded) and vs.raw (original bytes)."
+          },
+          {
+            "field": "texts",
+            "kind": "ss",
+            "description": "Literal strings, as vs.texts."
+          },
+          {
+            "field": "numbers",
+            "kind": "ff",
+            "description": "Numbers, as vs.numbers."
+          },
+          {
+            "field": "inputs",
+            "kind": "b",
+            "description": "One .npz of named arrays, as vs.inputs. A MATLAB .mat is also read when the image was built with scipy, which the published image is not."
+          }
+        ],
+        "out": [
+          {
+            "field": "stdout",
+            "codec": "identity",
+            "description": "The script's standard output, truncated at 64 000 characters. Always present."
+          },
+          {
+            "field": "stderr",
+            "codec": "identity",
+            "description": "The script's standard error, including the traceback when it fails. Always present."
+          },
+          {
+            "field": "result",
+            "codec": "numpy",
+            "when": "eval, when the expression returns one value",
+            "description": "Named by the script instead whenever it calls vs.emit. A tuple is unpacked into result_0, result_1, ..."
+          }
+        ]
+      },
+      "constraints": [
+        "THIS BOX EXECUTES CODE IT IS SENT. Anyone who can reach its port can run anything its user can. Keep it on a trusted network; never publish the port.",
+        "Field names come from the script's vs.emit calls, so data.out above is indicative - the reply's `encoding` map always names every field and its codec.",
+        "A value that is neither an ndarray, bytes, nor JSON-serializable is refused; the box never pickles on a script's behalf.",
+        "The image pins OpenCV below 5.0, because user code is overwhelmingly written against the 4.x API.",
+        "Stateless. `reset` is accepted and does nothing; each request gets a fresh directory that is deleted afterwards."
+      ],
+      "path": "boxes/pycv"
+    },
+    {
       "name": "sbert",
       "key": "sbert",
+      "port": 9062,
       "version": "0.1.0",
       "summary": "Sentence-BERT text embeddings and their pairwise similarity",
       "runtime": "gpu-or-cpu",
@@ -710,6 +844,9 @@
       ],
       "default_command": "encode",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -720,7 +857,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-sbert:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-sbert:latest"
         }
       },
       "data": {
@@ -755,6 +892,7 @@
     {
       "name": "sfm",
       "key": "sfm",
+      "port": 9074,
       "version": "0.1.0",
       "summary": "SfM: camera poses + 3D points from feature tracks and monocular depth, with partial (missing) tracks",
       "runtime": "cpu",
@@ -771,6 +909,9 @@
       ],
       "default_command": "reconstruct",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -781,7 +922,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-sfm:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-sfm:latest"
         }
       },
       "data": {
@@ -867,6 +1008,7 @@
     {
       "name": "tapnext",
       "key": "tapnext",
+      "port": 9063,
       "version": "0.1.0",
       "summary": "TAPNext point tracking with the Tomasi-Kanade observation matrix",
       "runtime": "gpu",
@@ -888,6 +1030,9 @@
         "cumulative": true,
         "note": "A reply covers every frame the session has seen, not only this call's."
       },
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -898,7 +1043,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-tapnext:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-tapnext:latest"
         }
       },
       "data": {
@@ -953,6 +1098,7 @@
     {
       "name": "unimatch",
       "key": "unimatch",
+      "port": 9070,
       "version": "0.1.0",
       "summary": "Unified dense matching: optical flow, stereo disparity, and multi-view depth",
       "runtime": "gpu-or-cpu",
@@ -971,6 +1117,9 @@
       ],
       "default_command": "flow",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -981,7 +1130,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-unimatch:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-unimatch:latest"
         }
       },
       "data": {
@@ -1046,6 +1195,7 @@
     {
       "name": "vggt",
       "key": "vggt",
+      "port": 9066,
       "version": "0.1.0",
       "summary": "VGGT multi-view 3D reconstruction: world points, per-view depth, camera poses, and a GLB",
       "runtime": "gpu",
@@ -1061,6 +1211,9 @@
       ],
       "default_command": "reconstruct",
       "session": null,
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -1071,7 +1224,7 @@
         ],
         "approx_size_gb": 8,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-vggt:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-vggt:latest"
         }
       },
       "data": {
@@ -1137,6 +1290,7 @@
     {
       "name": "yolo",
       "key": "yolo",
+      "port": 9068,
       "version": "0.1.0",
       "summary": "YOLO object detection with always-on tracking, on images or video",
       "runtime": "gpu-or-cpu",
@@ -1156,6 +1310,9 @@
         "location": "section",
         "note": "Track ids are stable within a session and restart at 1 for a fresh tracker, so they collide across sessions by design."
       },
+      "security": {
+        "profile": "standard"
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -1166,7 +1323,7 @@
         ],
         "approx_size_gb": null,
         "refs": {
-          "dockerhub": "docker.io/sipgisr/visionist-yolo:0.1.0"
+          "dockerhub": "docker.io/sipgisr/visionist-yolo:latest"
         }
       },
       "data": {

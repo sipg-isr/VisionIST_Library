@@ -19,7 +19,7 @@ docker build --tag sipgisr/visionist-template --build-arg SERVICE_NAME=template 
 Or pull the published image:
 
 ```bash
-docker run --rm -p 8061:8061 -e PORT=8061 docker.io/sipgisr/visionist-template:0.1.0
+docker run --rm -p 8061:8061 -e PORT=8061 docker.io/sipgisr/visionist-template:latest
 ```
 
 ## Request

@@ -65,13 +65,13 @@ sfm_box/
 
 ```bash
 cd boxes/sfm
-docker build --tag sipgisr/visionist-sfm:0.1.0 --build-arg SERVICE_NAME=sfm -f docker/Dockerfile .
+docker build --tag sipgisr/visionist-sfm:latest --build-arg SERVICE_NAME=sfm -f docker/Dockerfile .
 ```
 
 ## Run
 
 ```bash
-docker run --rm -p 8061:8061 -e PORT=8061 sipgisr/visionist-sfm:0.1.0
+docker run --rm -p 8061:8061 -e PORT=8061 sipgisr/visionist-sfm:latest
 ```
 
 Host ports are assigned by the fleet generator (`tools/make_fleet.py`).

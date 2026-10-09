@@ -24,7 +24,7 @@ docker build --tag sipgisr/visionist-unimatch --build-arg SERVICE_NAME=unimatch 
 Or pull the published image:
 
 ```bash
-docker run --rm --gpus all -p 8061:8061 -e PORT=8061 docker.io/sipgisr/visionist-unimatch:0.1.0
+docker run --rm --gpus all -p 8061:8061 -e PORT=8061 docker.io/sipgisr/visionist-unimatch:latest
 ```
 
 ## Request

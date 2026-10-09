@@ -1,0 +1,22 @@
+{
+  "generated_by": "tools/build_index.py",
+  "comment": "The host-port ledger: each box's permanent host port in a VisionIST fleet. APPEND-ONLY. A new box takes the next port after the highest one ever issued; an existing box never moves, and a retired box's port is never reused. Edit a box's entry only to correct a mistake, and never after an image of that box has shipped.",
+  "base_port": 9061,
+  "ports": {
+    "clip": 9061,
+    "sbert": 9062,
+    "tapnext": 9063,
+    "lang_sam": 9064,
+    "opencv": 9065,
+    "vggt": 9066,
+    "moge": 9067,
+    "yolo": 9068,
+    "lightglue": 9069,
+    "unimatch": 9070,
+    "features": 9071,
+    "d4rt": 9072,
+    "open_clip": 9073,
+    "sfm": 9074,
+    "pycv": 9075
+  }
+}

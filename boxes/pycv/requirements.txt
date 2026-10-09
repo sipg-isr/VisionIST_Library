@@ -1,0 +1,12 @@
+grpcio
+protobuf
+grpcio-reflection
+grpcio-status
+numpy
+# Pinned below 5: this box runs user-supplied code, and essentially all of it
+# was written against the OpenCV 4 API. An unpinned install resolves to 5.x.
+opencv-python-headless>=4.10,<5
+# Optional: install scipy to accept a MATLAB .mat bundle in `data.inputs`.
+# Left out on purpose - it is ~138 MB, a third of this image, and .npz covers
+# the same ground losslessly. The service detects its absence and says so.
+# scipy
