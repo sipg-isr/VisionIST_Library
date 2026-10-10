@@ -6,7 +6,7 @@ CODEOWNERS is generated from your manifest, so you review changes to it.
 ## Start
 
 ```bash
-git clone https://github.com/jpcosteira/VisionIST_Library
+git clone https://github.com/sipg-isr/VisionIST_Library
 cd VisionIST_Library
 pip install -r tools/requirements.txt
 

@@ -1,7 +1,7 @@
 # Forking VisionIST_Library into your own registry
 
 This page lists every static reference in the repository that points at the
-original owner (GitHub `jpcosteira`, Docker Hub `sipgisr`) and what to do with
+original owner (GitHub `sipg-isr`, Docker Hub `sipgisr`) and what to do with
 it if you want your own registry that the **VisionIST client** can still use.
 
 The client is box-agnostic. It needs a `host:port`, the envelope in
@@ -14,7 +14,7 @@ Re-run the scan at any time. After you have forked it should print only the
 three `pivist/features` attribution lines of the `features` box (see 2.6):
 
 ```bash
-grep -rnI "jpcosteira\|sipgisr\|Costeira\|isr.tecnico\|pivist" . \
+grep -rnI "sipg-isr\|jpcosteira\|sipgisr\|Costeira\|isr.tecnico\|pivist" . \
   --exclude-dir=.git --exclude=index.json
 ```
 
@@ -32,7 +32,9 @@ Then, from the repository root:
 
 ```bash
 # 1. maintainers, owners, image names, URLs, docs
-grep -rlI "jpcosteira" . --exclude-dir=.git --exclude=index.json | xargs sed -i "s/jpcosteira/$GH_OWNER/g"
+grep -rlI "sipg-isr" . --exclude-dir=.git --exclude=index.json | xargs sed -i "s/sipg-isr/$GH_OWNER/g"
+# and the maintainer handle in every box.yaml, which is a person, not the org:
+grep -rlI "jpcosteira" . --exclude-dir=.git --exclude=index.json | xargs sed -i "s/jpcosteira/$GH_HANDLE/g"
 grep -rlI "sipgisr"    . --exclude-dir=.git --exclude=index.json | xargs sed -i "s#sipgisr/#$IMG_ORG/#g; s#/repositories/sipgisr#/repositories/$IMG_ORG#g; s#\`sipgisr/\`#\`$IMG_ORG/\`#g"
 sed -i "s/name: Joao Paulo Costeira/name: $NAME/; s/email: jpc@isr.tecnico.ulisboa.pt/email: $EMAIL/" boxes/*/box.yaml
 
@@ -65,10 +67,10 @@ every place listed in 2.2.
 
 | Where | Reference | What to do |
 |---|---|---|
-| `tools/make_fleet.py` L26 (`DEFAULT_INDEX_URL`), also its docstring (L17) and the README it emits (L162) | `raw.githubusercontent.com/jpcosteira/VisionIST_Library/main/registry/index.json` | Point at your raw `registry/index.json`. Users can also override per run with `--index <url-or-path>`. For a private repo the URL needs a token, or distribute the file and use `--index`. |
+| `tools/make_fleet.py` L26 (`DEFAULT_INDEX_URL`), also its docstring (L17) and the README it emits (L162) | `raw.githubusercontent.com/sipg-isr/VisionIST_Library/main/registry/index.json` | Point at your raw `registry/index.json`. Users can also override per run with `--index <url-or-path>`. For a private repo the URL needs a token, or distribute the file and use `--index`. |
 | `VisionIST/tools/make_fleet.py` (client repo, identical copy) | same constant | Change it there too, or always pass `--index`. |
-| `registry/schema.json` `$id` | `https://github.com/jpcosteira/VisionIST_Library/registry/schema.json` | Change to your repo; it is only an identifier, nothing fetches it. |
-| `README.md` L7, L23, `CONTRIBUTING.md` L9 | Links to `jpcosteira/VisionIST`, `VisionIST_matlab`, `VisionIST_Library`, clone command | Edit the links; point `VisionIST` and `VisionIST_matlab` at your forks only if you forked those too. |
+| `registry/schema.json` `$id` | `https://github.com/sipg-isr/VisionIST_Library/registry/schema.json` | Change to your repo; it is only an identifier, nothing fetches it. |
+| `README.md` L7, L23, `CONTRIBUTING.md` L9 | Links to `sipg-isr/VisionIST`, `VisionIST_matlab`, `VisionIST_Library`, clone command | Edit the links; point `VisionIST` and `VisionIST_matlab` at your forks only if you forked those too. |
 | `README.md` L25 | `hub.docker.com/repositories/sipgisr` | Your Docker Hub page. |
 
 ### 2.3 Image, registry and container names

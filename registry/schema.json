@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jpcosteira/VisionIST_Library/registry/schema.json",
+  "$id": "https://github.com/sipg-isr/VisionIST_Library/registry/schema.json",
   "title": "VisionIST box manifest",
   "description": "box.yaml - the registry entry for one box. Everything downstream (the index, the README table, the CI build matrix, the webui definition, the fleet generator) is generated from these, so nothing is maintained by hand twice.",
   "type": "object",
