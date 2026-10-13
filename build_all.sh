@@ -16,7 +16,7 @@
 set -u
 cd "$(dirname "$0")"
 
-BOXES=${*:-"clip d4rt lang_sam lightglue sbert tapnext unimatch yolo sfm"}
+BOXES=${*:-$(ls boxes)}
 SKIP_HUB=${SKIP_HUB:-1}   # 1 = skip boxes that are pullable from Docker Hub
 LOGDIR=build-logs
 mkdir -p "$LOGDIR"
