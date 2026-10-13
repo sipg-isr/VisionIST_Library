@@ -1,0 +1,14 @@
+grpcio
+protobuf
+grpcio-reflection
+grpcio-status
+numpy
+# The MediaPipe Tasks API. Pinned: the 0.10 -> 1.x step changed the package
+# layout (the legacy `mediapipe.solutions` graphs are gone), so an unpinned
+# install is not a no-op for this service.
+mediapipe==1.1.0
+# cv2 is NOT listed here on purpose. mediapipe requires opencv-contrib-python,
+# and installing opencv-python-headless alongside it puts two builds of the
+# same module in the image, with whichever landed last winning. The service
+# imports cv2 from mediapipe's dependency; libgl1 in the Dockerfile is what
+# that build needs at runtime.
