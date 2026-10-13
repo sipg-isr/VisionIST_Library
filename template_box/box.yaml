@@ -76,6 +76,14 @@ constraints:
 #     sha256: "…"
 #     bytes: 1234567
 
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables, so an operator changes them at launch without a
+# rebuild. Raise max_message_mb if your box takes video or many images; keep
+# max_workers low if its work is one GPU or a subprocess.
+limits:
+  max_message_mb: 64
+  max_workers: 4
+
 links:
   upstream: https://example.org/the-model-or-library-this-wraps
   license: MIT

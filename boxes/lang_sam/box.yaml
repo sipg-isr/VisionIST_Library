@@ -58,5 +58,11 @@ constraints:
 - No `text_prompt` is an error.
 - A request with no `images` key at all is echoed back verbatim rather than erroring.
 - Also answers to the section names `lang_segm` and `aispgradio`.
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 64
+  max_workers: 2
+
 links:
   upstream: https://github.com/luca-medeiros/lang-segment-anything

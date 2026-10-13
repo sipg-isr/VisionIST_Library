@@ -56,6 +56,15 @@ python3 tools/build_index.py               # regenerate index, ports, README, CO
 python3 tools/check_docs.py my_box         # your README builds and runs the way CI does
 ```
 
+Your box's `grpc.server(...)` comes from the template and reads its limits
+from `serve` (a synced copy of `contract/serve.py`): the message cap, the
+worker count and the in-flight ceiling all come from the environment, with the
+defaults you declare under `limits:` in `box.yaml`. Do not write those numbers
+into your service source - an operator has to be able to change them at launch
+without rebuilding your image. Raise `max_message_mb` if your box takes video
+or many images at once, and keep `max_workers` low if its work is a single GPU
+or a subprocess.
+
 `build_index.py` also issues your box its **host port** and appends it to
 `registry/ports.json`. Ports go out in arrival order, so yours is simply the
 next one after the highest ever issued — never an alphabetical slot, which

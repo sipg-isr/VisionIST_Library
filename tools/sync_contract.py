@@ -24,8 +24,10 @@ from _registry import box_dirs, repo_root
 
 #: What every box gets a copy of. The generated *_pb2.py files are NOT here:
 #: they are produced inside the Docker build from the .proto, so there is no
-#: generated Python to keep in sync.
-CONTRACT_FILES = ["pipeline.proto", "aux.py"]
+#: generated Python to keep in sync. serve.py holds the server limits every
+#: box reads from the environment - shared for the same reason as aux.py:
+#: sixteen hand-maintained copies is how they drift.
+CONTRACT_FILES = ["pipeline.proto", "aux.py", "serve.py"]
 
 
 def main() -> int:

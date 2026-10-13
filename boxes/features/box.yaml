@@ -85,5 +85,11 @@ constraints:
 - '`names` must have exactly as many entries as `images`.'
 - Booleans also accept the strings "true"/"false".
 - 'Pure CPU: no device parameter.'
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 64
+  max_workers: 4
+
 links:
   upstream: https://github.com/pivist/features

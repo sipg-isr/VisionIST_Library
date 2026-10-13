@@ -14,6 +14,7 @@ sys.path.append("./protos")
 import pipeline_pb2 as tapnext_pb2
 import pipeline_pb2_grpc as tapnext_pb2_grpc
 from aux import wrap_value, unwrap_value
+import serve
 
 import numpy as np
 import torch
@@ -866,12 +867,9 @@ def run_server(server):
 
 if __name__ == '__main__':
     server = grpc.server(
-        futures.ThreadPoolExecutor(),
-        options=[
-            ('grpc.max_send_message_length', -1),
-            ('grpc.max_receive_message_length', -1),
-        ]
-    )
+        futures.ThreadPoolExecutor(max_workers=serve.max_workers()),
+        options=serve.server_options(),
+        maximum_concurrent_rpcs=serve.max_concurrent_rpcs())
 
     tapnext_pb2_grpc.add_PipelineServiceServicer_to_server(PipelineService(), server)
 

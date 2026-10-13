@@ -1,7 +1,7 @@
 {
   "schema": "registry/schema.json",
   "generated_by": "tools/build_index.py",
-  "count": 15,
+  "count": 16,
   "boxes": [
     {
       "name": "clip",
@@ -23,6 +23,10 @@
       "session": null,
       "security": {
         "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 4
       },
       "maintainers": [
         "jpcosteira"
@@ -103,6 +107,11 @@
       "session": null,
       "security": {
         "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 256,
+        "max_workers": 2,
+        "note": "A clip plus its point grid; the model serialises on one GPU anyway."
       },
       "maintainers": [
         "jpcosteira"
@@ -259,6 +268,10 @@
       "security": {
         "profile": "standard"
       },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 4
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -341,6 +354,10 @@
       "security": {
         "profile": "standard"
       },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 2
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -406,6 +423,10 @@
       },
       "security": {
         "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 4
       },
       "maintainers": [
         "jpcosteira"
@@ -491,6 +512,127 @@
       "path": "boxes/lightglue"
     },
     {
+      "name": "mediapipe",
+      "key": "mediapipe",
+      "port": 9076,
+      "version": "0.1.0",
+      "summary": "MediaPipe landmarks: 21-point hands, 33-point body pose, 478-point face mesh, on CPU",
+      "runtime": "cpu",
+      "status": "experimental",
+      "tags": [
+        "face",
+        "hands",
+        "landmarks",
+        "pose"
+      ],
+      "commands": [
+        "hands",
+        "pose",
+        "face",
+        "reset"
+      ],
+      "default_command": "hands",
+      "session": null,
+      "security": {
+        "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 4
+      },
+      "maintainers": [
+        "jpcosteira"
+      ],
+      "image": {
+        "repository": "sipgisr/visionist-mediapipe",
+        "registries": [
+          "dockerhub"
+        ],
+        "approx_size_gb": 0.7,
+        "refs": {
+          "dockerhub": "docker.io/sipgisr/visionist-mediapipe:latest"
+        }
+      },
+      "data": {
+        "in": [
+          {
+            "field": "images",
+            "kind": "bb",
+            "required": true,
+            "description": "JPEG/PNG bytes, one or more"
+          }
+        ],
+        "out": [
+          {
+            "field": "landmarks",
+            "codec": "numpy",
+            "shape": "(n_images, M, L, 3)",
+            "description": "L is 21 (hands), 33 (pose) or 478 (face). M is the padded per-image detection count - read `counts` before trusting a row."
+          },
+          {
+            "field": "counts",
+            "codec": "numpy",
+            "shape": "(n_images,)",
+            "description": "int32, how many hands/poses/faces were actually found in each image. Rows of `landmarks` past counts[i] are zero padding."
+          },
+          {
+            "field": "world_landmarks",
+            "codec": "numpy",
+            "shape": "(n_images, M, L, 3)",
+            "when": "hands, pose",
+            "description": "Metric coordinates in metres, origin at the hand or hip centre. Not produced by the face bundle."
+          },
+          {
+            "field": "handedness",
+            "codec": "numpy",
+            "shape": "(n_images, M)",
+            "when": "hands",
+            "description": "int8, 0 = left, 1 = right, -1 = padding. MediaPipe labels a mirrored (selfie) image, so a webcam frame reports the opposite hand unless it was flipped first."
+          },
+          {
+            "field": "scores",
+            "codec": "numpy",
+            "shape": "(n_images, M)",
+            "when": "hands",
+            "description": "Confidence of the handedness label."
+          },
+          {
+            "field": "visibility",
+            "codec": "numpy",
+            "shape": "(n_images, M, 33)",
+            "when": "pose",
+            "description": "Per-landmark visibility in [0, 1]; an occluded joint is still given a position."
+          },
+          {
+            "field": "blendshapes",
+            "codec": "numpy",
+            "shape": "(n_images, M, 52)",
+            "when": "face, parameters.blendshapes"
+          },
+          {
+            "field": "blendshape_names",
+            "codec": "json",
+            "when": "face, parameters.blendshapes",
+            "description": "The 52 category names, in the column order of `blendshapes`."
+          },
+          {
+            "field": "transformation_matrixes",
+            "codec": "numpy",
+            "shape": "(n_images, M, 4, 4)",
+            "when": "face, parameters.transformation_matrix"
+          }
+        ]
+      },
+      "constraints": [
+        "Landmarks are NORMALIZED to [0, 1] by default, as (x, y, z) with x across the width - not pixels, and not the (y, x) that tapnext reports. Send coordinates=pixels to get pixel units.",
+        "`landmarks` is padded to the largest detection count in the batch: always read `counts` first. An image with no detection contributes a zero row.",
+        "z is depth relative to the subject (wrist for hands, hips for pose, head centre for face), in the same scale as x. It is not metric - use world_landmarks for that.",
+        "One model bundle per command is baked into the image at build time; the box never downloads at runtime and needs no network.",
+        "CPU only. MediaPipe's GPU delegate targets Android, iOS and the web, not a Linux server."
+      ],
+      "path": "boxes/mediapipe"
+    },
+    {
       "name": "moge",
       "key": "moge",
       "port": 9067,
@@ -511,6 +653,10 @@
       "session": null,
       "security": {
         "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 128,
+        "max_workers": 4
       },
       "maintainers": [
         "jpcosteira"
@@ -572,6 +718,10 @@
       "session": null,
       "security": {
         "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 4
       },
       "maintainers": [
         "jpcosteira"
@@ -664,6 +814,10 @@
       "security": {
         "profile": "standard"
       },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 4
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -750,6 +904,11 @@
         "mem_limit": "4g",
         "pids_limit": 256,
         "note": "Bounds an accident - a runaway loop, a huge allocation, a fork bomb. It is not a sandbox against someone who means harm; keep the port on a trusted network."
+      },
+      "limits": {
+        "max_message_mb": 32,
+        "max_workers": 2,
+        "note": "Each request forks a subprocess under the container's memory cap, so concurrency is deliberately low."
       },
       "maintainers": [
         "jpcosteira"
@@ -847,6 +1006,11 @@
       "security": {
         "profile": "standard"
       },
+      "limits": {
+        "max_message_mb": 16,
+        "max_workers": 8,
+        "note": "Text only; a 16 MB request is already far more than any sane prompt list."
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -911,6 +1075,10 @@
       "session": null,
       "security": {
         "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 4
       },
       "maintainers": [
         "jpcosteira"
@@ -1033,6 +1201,11 @@
       "security": {
         "profile": "standard"
       },
+      "limits": {
+        "max_message_mb": 256,
+        "max_workers": 2,
+        "note": "Video in, cumulative tracks out - replies grow with the session."
+      },
       "maintainers": [
         "jpcosteira"
       ],
@@ -1119,6 +1292,10 @@
       "session": null,
       "security": {
         "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 128,
+        "max_workers": 2
       },
       "maintainers": [
         "jpcosteira"
@@ -1213,6 +1390,11 @@
       "session": null,
       "security": {
         "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 128,
+        "max_workers": 1,
+        "note": "Multi-view sets are large and the 1B model wants the GPU to itself."
       },
       "maintainers": [
         "jpcosteira"
@@ -1312,6 +1494,11 @@
       },
       "security": {
         "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 256,
+        "max_workers": 4,
+        "note": "Video in, and annotated frames back out when save_annotated is on."
       },
       "maintainers": [
         "jpcosteira"

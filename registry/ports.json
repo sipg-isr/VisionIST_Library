@@ -17,6 +17,7 @@
     "d4rt": 9072,
     "open_clip": 9073,
     "sfm": 9074,
-    "pycv": 9075
+    "pycv": 9075,
+    "mediapipe": 9076
   }
 }

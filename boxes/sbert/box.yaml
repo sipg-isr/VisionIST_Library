@@ -43,5 +43,12 @@ constraints:
 - The config section is `sbert`, NOT `textEmbedding` - the directory and the key differ for this box.
 - An empty `texts` list gives empty_request.
 - No image input.
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 16
+  max_workers: 8
+  note: Text only; a 16 MB request is already far more than any sane prompt list.
+
 links:
   upstream: https://www.sbert.net

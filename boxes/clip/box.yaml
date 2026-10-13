@@ -56,5 +56,11 @@ constraints:
 - Missing `images` answers empty_request; missing `texts` is an error.
 - '`command` is only inspected for "reset" - anything else encodes.'
 - The model cannot be switched at runtime.
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 64
+  max_workers: 4
+
 links:
   upstream: https://github.com/openai/CLIP

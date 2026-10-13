@@ -21,6 +21,7 @@ import grpc_reflection.v1alpha.reflection as grpc_reflection
 import pipeline_pb2
 import pipeline_pb2_grpc
 from aux import wrap_value, unwrap_value
+import serve
 
 from vggt.models.vggt import VGGT
 from vggt.visual_util import predictions_to_glb
@@ -376,12 +377,9 @@ if __name__ == '__main__':
         level=logging.INFO)
 
     server = grpc.server(
-        futures.ThreadPoolExecutor(),
-        options=[
-            ('grpc.max_send_message_length', -1),
-            ('grpc.max_receive_message_length', -1),
-        ]
-    )
+        futures.ThreadPoolExecutor(max_workers=serve.max_workers()),
+        options=serve.server_options(),
+        maximum_concurrent_rpcs=serve.max_concurrent_rpcs())
 
     pipeline_pb2_grpc.add_PipelineServiceServicer_to_server(PipelineService(), server)
 

@@ -121,5 +121,11 @@ constraints:
 - 'Send one input mode: mode A (tracks + depths + intrinsics) or mode B (W_mat + lambda_mat); if both, mode B wins.'
 - 'Every array is an np.save (.npy) blob; a torch.save tensor is also accepted.'
 - 'Pure CPU, stateless; `reconstruct` is the default command and `reset` is a no-op.'
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 64
+  max_workers: 4
+
 links:
   upstream: visionist_client.track_stream (lightglue) + a depth box (moge, unimatch)

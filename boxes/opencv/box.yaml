@@ -77,5 +77,11 @@ data:
 constraints:
 - SUPERPOINT/DISK route through LightGlue and need exactly 2 images.
 - With 1 image the matching fields are ABSENT, not empty - check before reading them.
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 64
+  max_workers: 4
+
 links:
   upstream: https://opencv.org

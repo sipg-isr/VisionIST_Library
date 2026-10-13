@@ -12,6 +12,7 @@
 /boxes/features/                        @jpcosteira
 /boxes/lang_sam/                        @jpcosteira
 /boxes/lightglue/                       @jpcosteira
+/boxes/mediapipe/                       @jpcosteira
 /boxes/moge/                            @jpcosteira
 /boxes/open_clip/                       @jpcosteira
 /boxes/opencv/                          @jpcosteira

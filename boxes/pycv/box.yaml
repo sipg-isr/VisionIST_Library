@@ -115,6 +115,13 @@ security:
   pids_limit: 256
   note: Bounds an accident - a runaway loop, a huge allocation, a fork bomb. It is not a sandbox against someone who means harm; keep the port on a trusted network.
 
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 32
+  max_workers: 2
+  note: Each request forks a subprocess under the container's memory cap, so concurrency is deliberately low.
+
 links:
   upstream: https://opencv.org
   license: Apache-2.0

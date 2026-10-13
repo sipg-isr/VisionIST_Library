@@ -60,5 +60,11 @@ constraints:
 - 'CUDA only: an explicit device "cpu" is rejected (the refinement uses CUDA-only Triton kernels).'
 - Declares `encoding` as a bare string.
 - Invalid pixels come back as inf/nan in depth - filter with the mask.
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 128
+  max_workers: 4
+
 links:
   upstream: https://github.com/microsoft/MoGe

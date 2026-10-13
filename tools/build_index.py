@@ -46,6 +46,7 @@ def build_index(manifests: list[dict], ports: dict) -> dict:
             "default_command": m["commands"].get("default"),
             "session": m.get("session"),
             "security": m.get("security") or {"profile": "standard"},
+            "limits": m.get("limits") or {},
             "maintainers": [x["github"] for x in m["maintainers"]],
             "image": {
                 "repository": m["image"]["repository"],

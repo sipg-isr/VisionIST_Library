@@ -105,6 +105,28 @@ SECURITY_PROFILES = {
 }
 
 
+#: Server limits a box declared in its manifest, as compose environment
+#: variables. contract/serve.py reads these at startup, so changing one is a
+#: restart rather than a rebuild. Keyed by the manifest field, never by box.
+LIMIT_ENV = {
+    "max_message_mb": "MAX_MESSAGE_MB",
+    "max_workers": "MAX_WORKERS",
+    "max_concurrent_rpcs": "MAX_CONCURRENT_RPCS",
+}
+
+
+def environment_lines(box: dict) -> list:
+    """PORT plus whatever limits the box asked for."""
+    env = {"PORT": "8061"}
+    for field, var in LIMIT_ENV.items():
+        value = (box.get("limits") or {}).get(field)
+        if value is not None:
+            env[var] = str(value)
+    if len(env) == 1:
+        return ["    environment: [ PORT=8061 ]"]
+    return ["    environment:"] + [f"      - {k}={v}" for k, v in env.items()]
+
+
 def security_lines(box: dict) -> list:
     """Compose hardening for one box, from its declared profile."""
     sec = box.get("security") or {}
@@ -166,7 +188,7 @@ def compose(boxes: list[dict], args) -> tuple[str, list[str]]:
         lines.append(f"    image: {ref}")
         lines.append(f"    container_name: visionist-{box['name']}")
         lines.append(f'    ports: ["{port_of(box, args, fallback)}:8061"]')
-        lines.append("    environment: [ PORT=8061 ]")
+        lines.extend(environment_lines(box))
         lines.append("    restart: unless-stopped")
         lines.extend(security_lines(box))
         if box["runtime"] in GPU_RUNTIMES and args.gpu:

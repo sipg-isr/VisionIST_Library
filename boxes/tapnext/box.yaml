@@ -128,5 +128,12 @@ constraints:
 - The declared encoding always lists observation_matrix even when the field is absent.
 - 'growing mode (`new_tracks: true`): the point set may have GROWN per frame — slice tracks with the visibles mask; `data.birth_frames` separates not-yet-born from born-but-lost.'
 - Sessions expire (TAPNEXT_SESSION_TTL, default 1800s).
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 256
+  max_workers: 2
+  note: Video in, cumulative tracks out - replies grow with the session.
+
 links:
   upstream: https://github.com/google-deepmind/tapnet

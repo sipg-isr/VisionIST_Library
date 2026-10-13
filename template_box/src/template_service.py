@@ -15,6 +15,9 @@ The shared-envelope rules this file demonstrates:
 * Binary payloads declare their ``encoding`` so a client knows how to decode
   them without knowing this box: here ``numpy``, an ``np.save`` blob.
 * Port 8061 (AI4EU spec), overridable with the ``PORT`` env var.
+* Server limits come from ``serve`` (contract/serve.py), so the message cap
+  and the worker count are set at launch rather than written into the image.
+  Declare your box's own defaults under ``limits:`` in box.yaml.
 """
 
 import concurrent.futures as futures
@@ -29,6 +32,7 @@ sys.path.append("./protos")
 import pipeline_pb2 as folder_wd_pb2  # noqa: E402
 import pipeline_pb2_grpc as folder_wd_pb2_grpc  # noqa: E402
 from aux import wrap_value, unwrap_value  # noqa: E402
+import serve  # noqa: E402
 
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
@@ -168,9 +172,9 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
     server = grpc.server(
-        futures.ThreadPoolExecutor(),
-        options=[("grpc.max_send_message_length", -1),
-                 ("grpc.max_receive_message_length", -1)])
+        futures.ThreadPoolExecutor(max_workers=serve.max_workers()),
+        options=serve.server_options(),
+        maximum_concurrent_rpcs=serve.max_concurrent_rpcs())
     folder_wd_pb2_grpc.add_PipelineServiceServicer_to_server(
         PipelineService(), server)
 

@@ -93,5 +93,12 @@ constraints:
 - '`images` and `video` are mutually exclusive; neither gives empty_request.'
 - conf and iou are clamped to <= 1.0.
 - Sessions expire (YOLO_SESSION_TTL, default 1800s).
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 256
+  max_workers: 4
+  note: Video in, and annotated frames back out when save_annotated is on.
+
 links:
   upstream: https://github.com/ultralytics/ultralytics

@@ -51,7 +51,8 @@ import time
 sys.path.append("./protos")
 import pipeline_pb2 as folder_wd_pb2  # noqa: E402
 import pipeline_pb2_grpc as folder_wd_pb2_grpc  # noqa: E402
-from aux import wrap_value, unwrap_value  # noqa: E402
+from aux import wrap_value, unwrap_value
+import serve  # noqa: E402
 
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
@@ -530,9 +531,9 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=4),
-        options=[("grpc.max_send_message_length", -1),
-                 ("grpc.max_receive_message_length", -1)])
+        futures.ThreadPoolExecutor(max_workers=serve.max_workers(4)),
+        options=serve.server_options(),
+        maximum_concurrent_rpcs=serve.max_concurrent_rpcs())
     folder_wd_pb2_grpc.add_PipelineServiceServicer_to_server(
         PipelineService(), server)
 

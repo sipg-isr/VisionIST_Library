@@ -71,5 +71,12 @@ constraints:
 - Every input image must have identical dimensions; otherwise the box errors and lists the shapes.
 - The build downloads the VGGT-1B checkpoint (~5 GB) - the heaviest image in the registry.
 - Model load is async and the first call blocks until it finishes.
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 128
+  max_workers: 1
+  note: Multi-view sets are large and the 1B model wants the GPU to itself.
+
 links:
   upstream: https://github.com/facebookresearch/vggt

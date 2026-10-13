@@ -29,6 +29,7 @@ sys.path.append('./protos')
 import pipeline_pb2
 import pipeline_pb2_grpc
 from aux import wrap_value, unwrap_value
+import serve
 
 _IDLE_TIMEOUT = 60  # seconds before GPU→CPU fallback
 
@@ -408,12 +409,9 @@ def run_server():
     )
     
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=10),
-        options=[
-            ("grpc.max_send_message_length", -1),
-            ("grpc.max_receive_message_length", -1),
-        ]
-    )
+        futures.ThreadPoolExecutor(max_workers=serve.max_workers(10)),
+        options=serve.server_options(),
+        maximum_concurrent_rpcs=serve.max_concurrent_rpcs())
     
     # Default to MoGe-3 large model (faster); use gigantic for best quality
     box = MoGeBox(model_name=MODEL_V3_LARGE)

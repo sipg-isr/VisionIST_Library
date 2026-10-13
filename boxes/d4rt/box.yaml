@@ -189,6 +189,13 @@ constraints:
     GPU in practice. Nothing is CUDA-only - there are no custom kernels - but ~1.16B parameters in
     fp32 makes CPU inference impractical rather than merely slow.
   - The image bakes in a ~4.6 GB checkpoint; build with DOWNLOAD_WEIGHTS=false to mount it instead.
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 256
+  max_workers: 2
+  note: A clip plus its point grid; the model serialises on one GPU anyway.
+
 links:
   upstream: https://github.com/Lijiaxin0111/Open-d4rt
   paper: https://d4rt-paper.github.io/

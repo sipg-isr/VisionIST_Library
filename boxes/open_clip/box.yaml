@@ -115,6 +115,12 @@ constraints:
     fp16 option yet.
   - Texts longer than the model's context (usually 77 tokens) are truncated by open_clip.
   - 'Command `models` lists open_clip''s registry of (model, pretrained) pairs; it does not check that a download will succeed.'
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 64
+  max_workers: 4
+
 links:
   upstream: https://github.com/mlfoundations/open_clip
   license: MIT

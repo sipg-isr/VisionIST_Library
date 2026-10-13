@@ -122,5 +122,11 @@ constraints:
 - Inputs above ~1.6 MP are downscaled inside the box (auto_resized in the reply) and the result scaled
   back.
 - Per-scale list lengths must equal num_scales.
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 128
+  max_workers: 2
+
 links:
   upstream: https://github.com/autonomousvision/unimatch

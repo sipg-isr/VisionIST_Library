@@ -297,6 +297,31 @@
           "type": "string"
         }
       }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Server limits this box recommends. The fleet generator writes them into the compose file as environment variables, and an operator overrides any of them at launch - the image never needs rebuilding to change a limit. Read by contract/serve.py.",
+      "properties": {
+        "max_message_mb": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Largest Envelope accepted or sent, in MB. 0 means unlimited, which is the pre-limits behaviour and should only be used on a trusted network. Boxes that take a video need more than boxes that take one image."
+        },
+        "max_workers": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Requests handled at once. Omit to keep Python's min(32, cpu_count + 4). A box whose work is a single GPU should be low."
+        },
+        "max_concurrent_rpcs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "In-flight requests before the server refuses rather than queueing without bound. Defaults to four times max_workers."
+        },
+        "note": {
+          "type": "string"
+        }
+      }
     }
   },
   "$defs": {

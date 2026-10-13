@@ -101,5 +101,11 @@ constraints:
 - '`stream` takes exactly 1 image per call.'
 - 'The first frame of a stream session reports first_frame: true and no matches.'
 - Sessions expire (LIGHTGLUE_SESSION_TTL, default 1800s).
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 64
+  max_workers: 4
+
 links:
   upstream: https://github.com/cvg/LightGlue
