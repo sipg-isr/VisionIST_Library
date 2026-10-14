@@ -173,6 +173,12 @@
             "codec": "numpy",
             "shape": "(F,)",
             "description": "registered image names"
+          },
+          {
+            "field": "log",
+            "codec": "identity",
+            "when": "command=log",
+            "description": "UTF-8 tail of COLMAP live output (job state runs in config_extra: running/stage/elapsed_s/lines)"
           }
         ]
       },

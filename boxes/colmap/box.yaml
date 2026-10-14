@@ -44,6 +44,7 @@ parameters:
   - name: sequential_overlap
     type: integer
     default: 5
+    description: 'sequential matcher: how many frames ahead of the current one to try matching to.'
   - name: max_image_size
     type: integer
     default: 3200
@@ -58,6 +59,7 @@ parameters:
   - name: single_camera
     type: boolean
     default: true
+    description: 'One shared camera model for the whole set (single moving rig) vs per-image cameras. Keep true unless you genuinely mix sensors.'
   - name: intrinsics
     type: string
     default: ""
@@ -105,7 +107,10 @@ data:
       codec: numpy
       shape: (F,)
       description: registered image names
-  # `log` returns data.log as a utf-8 blob (codec identity).
+    - field: log
+      codec: identity
+      when: 'command=log'
+      description: 'UTF-8 tail of COLMAP live output (job state runs in config_extra: running/stage/elapsed_s/lines)'
 
 constraints:
   - 'This is a ground-truth box: reconstruct is a SINGLE long call. The gRPC reply arrives only when COLMAP finishes; poll command=log (or "docker logs") while waiting, and raise the client deadline. Limits below give 1 worker for the job + 1 to serve log/reset.'

@@ -45,10 +45,15 @@ Example (gRPC request `config_json`, `data` omitted):
   `hierarchical` targets very large sets.
 - **matcher** `auto | exhaustive | sequential` - `auto` is exhaustive, or
   sequential when you send `image_names` (their order = video order).
+- **sequential_overlap** (int, default 5) - with the sequential matcher, how
+  many frames ahead of the current one are tried as potential neighbors.
 - **max_image_size / max_num_features** - the quality/speed levers
   (3200 px / 8192 features by default).
 - **use_gpu** `auto | true | false` - GPU SIFT extraction and matching when a
   device is present; the box always runs the same on CPU.
+- **single_camera** `true | false` - one shared camera model for the whole
+  set (a single moving rig; the default) vs. a self-calibrated model per
+  image. Keep it true unless you genuinely mix sensors.
 - **intrinsics** (optional) - fixed camera as `"PINHOLE 640 480 500 500 320 240"`;
   empty = COLMAP self-calibrates (the usual ground-truth setup).
 - **max_runtime_s** - a budget; on expiry the box cancels COLMAP (which
@@ -66,9 +71,10 @@ Example (gRPC request `config_json`, `data` omitted):
   - `intrinsics` (F,3,3) - pinhole view of each COLMAP camera model
   - `frame_ids` (F,) - positions in `images` for each row
   - `image_names` (F,) - registered image names
-- The answer object also carries `mapper`, `gpu`, `num_registered`,
-  `num_points`, `reproj_error` (mean px, from `model_analyzer`),
-  `stage_times_s` and `partial` flags.
+- The answer object also carries `mapper`, `matcher`, `gpu`,
+  `num_images`, `num_registered`, `num_unregistered`, `num_points`,
+  `reproj_error` (mean px, from `model_analyzer`) and `stage_times_s`,
+  `runtime` (seconds), plus `partial: true` when the budget cut it off.
 
 ## Watching a long job (the reason this box ships these limits)
 
@@ -129,7 +135,9 @@ demand, and a long job is normal - it just takes the time it takes.
 ## Test
 
 Committed fixtures: 7 DSLR frames of the ETH3D Large-Scale 2 *door* scene
-(see `test/data/provenance.json`), each ~200 KB - under the 256 KB cap. The
+(see `test/data/provenance.json`), each ~210 KB - a ~1.5 MB message, the
+kind that a default 4 MB gRPC cap would choke on, which is exactly why the
+box ships `limits.max_message_mb: 512`. The
 dataset ships its own ground-truth reconstruction (one shared PINHOLE camera,
 all 7 images registered), so this test checks the box **against ground
 truth**, not just self-consistency:
@@ -144,13 +152,17 @@ verifies against GT quantities that are world-frame-free and scale-free:
 7/7 frames registered, > 500 points, focal within 10 % of GT, and the
 box-reported mean reprojection error < 1.5 px.
 
-One documented caveat: the door cameras sit on a near-planar arc, where
-scale is the weakly-constrained degree of freedom of any SfM run. The
-incremental mapper nails the baselines; GLOMAP (a different objective)
-lands ~2x off there while still matching rotations to 0.1 degree, focal to
-a single pixel, and sub-pixel reprojection - the test asserts that,
-and notes the baseline gap rather than failing on it. On non-degenerate
-3D scenes GLOMAP's baselines are just as good.
+One documented caveat: the door cameras sit on a near-planar arc, where the
+baseline *lengths* are the weakly-constrained degree of freedom of any SfM
+run: the test asserts the stable witnesses (7/7 registered, sub-degree
+relative rotations, focal within a pixel of GT, sub-pixel reprojection) and
+only bounds the baseline ratios (< 3x, reporting when they run wider),
+because on this fixture either mapper can land ~2x off on a given
+match-graph initialization while still nailing everything else - observed
+both ways (one run 2% for GLOMAP / 101% for incremental; an earlier run the
+reverse). Both are valid solutions of the same degenerate configuration. On
+non-degenerate 3D scenes both mappers nail baselines, and the bound still
+catches gross failures.
 
 ## Registry
 
