@@ -56,6 +56,7 @@ checkout: `--index` also takes the published
 | Box | Key | Runtime | Port | What it does | Tags |
 |---|---|---|---|---|---|
 | [`clip`](boxes/clip) | `clip` | gpu | 9061 | CLIP image and text embeddings with their cross-modal similarity | `embeddings` `multimodal` |
+| [`colmap`](boxes/colmap) | `colmap` | gpu-or-cpu | 9077 | COLMAP ground-truth SfM: camera poses + 3D points + intrinsics from plain images (incremental / GLOMAP global mappers) | `geometry` `ground-truth` `reconstruction` `sfm` |
 | [`d4rt`](boxes/d4rt) | `d4rt` | gpu | 9072 | OpenD4RT 4D reconstruction and tracking - 3D point tracks, point clouds and camera poses from a video | `depth` `dynamic-3d` `geometry` `reconstruction` `tracking` |
 | [`features`](boxes/features) | `features` | cpu | 9071 | SIFT keypoints in the SIFT-Extractor layout: (2+128) x N, annotated JPEGs, MATLAB .mat | `classical` `features` `sift` |
 | [`lang_sam`](boxes/lang_sam) | `lang_sam` | gpu | 9064 | Text-guided segmentation with LangSAM: phrases in, masks out | `grounding` `language` `segmentation` |

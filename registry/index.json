@@ -1,7 +1,7 @@
 {
   "schema": "registry/schema.json",
   "generated_by": "tools/build_index.py",
-  "count": 16,
+  "count": 17,
   "boxes": [
     {
       "name": "clip",
@@ -81,6 +81,108 @@
         "The model cannot be switched at runtime."
       ],
       "path": "boxes/clip"
+    },
+    {
+      "name": "colmap",
+      "key": "colmap",
+      "port": 9077,
+      "version": "0.1.0",
+      "summary": "COLMAP ground-truth SfM: camera poses + 3D points + intrinsics from plain images (incremental / GLOMAP global mappers)",
+      "runtime": "gpu-or-cpu",
+      "status": "experimental",
+      "tags": [
+        "geometry",
+        "ground-truth",
+        "reconstruction",
+        "sfm"
+      ],
+      "commands": [
+        "reconstruct",
+        "log",
+        "reset"
+      ],
+      "default_command": "reconstruct",
+      "session": null,
+      "security": {
+        "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 512,
+        "max_workers": 2
+      },
+      "maintainers": [
+        "jpcosteira"
+      ],
+      "image": {
+        "repository": "sipgisr/visionist-colmap",
+        "registries": [
+          "dockerhub"
+        ],
+        "approx_size_gb": null,
+        "refs": {
+          "dockerhub": "docker.io/sipgisr/visionist-colmap:latest"
+        }
+      },
+      "data": {
+        "in": [
+          {
+            "field": "images",
+            "kind": "bb",
+            "required": true,
+            "description": "JPEG/PNG bytes of the view set"
+          },
+          {
+            "field": "image_names",
+            "kind": "ss",
+            "required": false,
+            "description": "Ordered names; their ORDER defines video order for the sequential matcher."
+          }
+        ],
+        "out": [
+          {
+            "field": "cameras",
+            "codec": "numpy",
+            "shape": "(F, 3, 4)",
+            "description": "per registered image [R | t], world -> camera"
+          },
+          {
+            "field": "points",
+            "codec": "numpy",
+            "shape": "(P, 3)"
+          },
+          {
+            "field": "point_colors",
+            "codec": "numpy",
+            "shape": "(P, 3)",
+            "description": "uint8 RGB per point"
+          },
+          {
+            "field": "intrinsics",
+            "codec": "numpy",
+            "shape": "(F, 3, 3)",
+            "description": "pinhole approximation of each camera model"
+          },
+          {
+            "field": "frame_ids",
+            "codec": "numpy",
+            "shape": "(F,)",
+            "description": "input index (position in `images`) of each row"
+          },
+          {
+            "field": "image_names",
+            "codec": "numpy",
+            "shape": "(F,)",
+            "description": "registered image names"
+          }
+        ]
+      },
+      "constraints": [
+        "This is a ground-truth box: reconstruct is a SINGLE long call. The gRPC reply arrives only when COLMAP finishes; poll command=log (or \"docker logs\") while waiting, and raise the client deadline. Limits below give 1 worker for the job + 1 to serve log/reset.",
+        "One reconstruction at a time; a second concurrent reconstruct returns an error, not a queue.",
+        "reconstruction runs untrusted image BYTES through a C++ binary but executes no user code; image content is still untrusted input data.",
+        "reset cancels the running reconstruction (SIGTERM, then SIGKILL). It is the box's cancel, unlike no-op resets elsewhere."
+      ],
+      "path": "boxes/colmap"
     },
     {
       "name": "d4rt",

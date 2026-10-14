@@ -1,0 +1,25 @@
+{
+  "source": "ETH3D Large-Scale 2 (v3) dataset, scene 'door' (dslr, undistorted)",
+  "note": "7 DSLR frames around a doorway; GT = dataset's own reconstruction (7/7 registered). The scene is near-planar (camera arc ~1 cm above a plane), which is exactly the configuration that stress-tests scale conditioning - incremental nails the baselines, GLOMAP gets rotations/focal/reproj right but ~2x baselines (known GLOMAP weakness on planar sweeps).",
+  "gt_model": "PINHOLE",
+  "gt_size": [
+    6212,
+    4140
+  ],
+  "gt_params": [
+    3415.67,
+    3414.36,
+    3119.82,
+    2054.28
+  ],
+  "scale": 0.25757,
+  "frames": [
+    "frame_0000.jpg",
+    "frame_0001.jpg",
+    "frame_0002.jpg",
+    "frame_0003.jpg",
+    "frame_0004.jpg",
+    "frame_0005.jpg",
+    "frame_0006.jpg"
+  ]
+}
