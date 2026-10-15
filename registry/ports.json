@@ -19,6 +19,7 @@
     "sfm": 9074,
     "pycv": 9075,
     "mediapipe": 9076,
-    "colmap": 9077
+    "colmap": 9077,
+    "abot_recon": 9078
   }
 }

@@ -1,8 +1,146 @@
 {
   "schema": "registry/schema.json",
   "generated_by": "tools/build_index.py",
-  "count": 17,
+  "count": 18,
   "boxes": [
+    {
+      "name": "abot_recon",
+      "key": "abot_recon",
+      "port": 9078,
+      "version": "0.1.0",
+      "summary": "ABot-Recon streaming 3D reconstruction - camera poses, adjacent relative poses and point maps from a video or a sequence of frames",
+      "runtime": "gpu",
+      "status": "experimental",
+      "tags": [
+        "depth",
+        "geometry",
+        "point-cloud",
+        "reconstruction",
+        "streaming"
+      ],
+      "commands": [
+        "reconstruct",
+        "trajectory",
+        "reset"
+      ],
+      "default_command": "reconstruct",
+      "session": null,
+      "security": {
+        "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 1024,
+        "max_workers": 2,
+        "note": "Point maps are voluminous; the model serialises on one GPU anyway."
+      },
+      "maintainers": [
+        "jpcosteira"
+      ],
+      "image": {
+        "repository": "sipgisr/visionist-abot-recon",
+        "registries": [
+          "dockerhub"
+        ],
+        "approx_size_gb": 11,
+        "refs": {
+          "dockerhub": "docker.io/sipgisr/visionist-abot-recon:latest"
+        }
+      },
+      "data": {
+        "in": [
+          {
+            "field": "images",
+            "kind": "bb",
+            "required": false,
+            "description": "Ordered frames, all the same size. Mutually exclusive with video."
+          },
+          {
+            "field": "video",
+            "kind": "b",
+            "required": false,
+            "description": "One video file (mp4/avi/webm/mov). Mutually exclusive with images."
+          }
+        ],
+        "out": [
+          {
+            "field": "camera_poses",
+            "codec": "numpy",
+            "shape": "(T, 4, 4)",
+            "description": "camera-to-world per frame; refined when loop closure is used"
+          },
+          {
+            "field": "relative_poses",
+            "codec": "numpy",
+            "shape": "(T-1, 4, 4)",
+            "description": "adjacent relative poses, frame i to i+1"
+          },
+          {
+            "field": "camera_poses_noloop",
+            "codec": "numpy",
+            "shape": "(T, 4, 4)",
+            "description": "the raw streaming trajectory, before any loop-closure refinement"
+          },
+          {
+            "field": "relative_poses_noloop",
+            "codec": "numpy",
+            "shape": "(T-1, 4, 4)",
+            "description": "adjacent relative poses of the raw streaming trajectory"
+          },
+          {
+            "field": "camera_poses_loop",
+            "codec": "numpy",
+            "shape": "(T, 4, 4)",
+            "when": "loop_closure used",
+            "description": "refined trajectory (equals camera_poses, kept separate for clarity)"
+          },
+          {
+            "field": "relative_poses_loop",
+            "codec": "numpy",
+            "shape": "(T-1, 4, 4)",
+            "when": "loop closure used"
+          },
+          {
+            "field": "local_points",
+            "codec": "numpy",
+            "shape": "(Td, 280, 504, 3)",
+            "when": "command=reconstruct",
+            "description": "per-frame point map in that frame's camera frame; Td = frames kept by dense_stride"
+          },
+          {
+            "field": "world_points",
+            "codec": "numpy",
+            "shape": "(Td, 280, 504, 3)",
+            "when": "command=reconstruct, output_world_points",
+            "description": "the same maps transformed by the final trajectory - the global cloud"
+          },
+          {
+            "field": "confidence",
+            "codec": "numpy",
+            "shape": "(Td, 280, 504)",
+            "when": "command=reconstruct, output_confidence",
+            "description": "per-pixel confidence"
+          },
+          {
+            "field": "confidence_mask",
+            "codec": "numpy",
+            "shape": "(Td, 280, 504)",
+            "when": "command=reconstruct, output_confidence",
+            "description": "boolean, confidence above the threshold"
+          }
+        ]
+      },
+      "constraints": [
+        "`images` and `video` are mutually exclusive; neither gives empty_request.",
+        "At least 3 frames are required, and all images must share one size.",
+        "Point maps come out at the model's fixed 280 x 504 grid whatever the input resolution - the model sees a resized view, so dense input does not buy pixels in the output.",
+        "`local_points` are per-frame camera-frame maps; for a single global cloud use `world_points` (the maps transformed by the final trajectory).",
+        "Reply size is dominated by the dense maps (~1.7 MB per map per frame at 280 x 504, float32). The default message cap is 1024 MB: for long videos use `trajectory`, or `dense_stride`, or fewer points sources - and raise MAX_MESSAGE_MB if you deliberately want more.",
+        "The model, its precision (default bf16) and attention backend are deployment-level: ABOT_RECON_AMP_DTYPE and ABOT_RECON_ATTENTION_BACKEND set at launch, not per request. The `paged` backend additionally needs flashinfer-python, which the stock image does not carry; `auto` falls back to PyTorch SDPA.",
+        "Loop closure is off by default and its assets are not in the stock image (about 450 MB extra); request `loop_closure: true` without them and the box tells you exactly what is missing.",
+        "The image bakes in a 4.0 GB checkpoint; build with DOWNLOAD_WEIGHTS=false to mount it at /weights/abot_recon.safetensors instead."
+      ],
+      "path": "boxes/abot_recon"
+    },
     {
       "name": "clip",
       "key": "clip",
