@@ -1,0 +1,10 @@
+grpcio
+protobuf
+grpcio-reflection
+grpcio-status
+# The HTTP side: the capture page, the upload endpoint, the results feed.
+aiohttp
+# The pairing QR code returned by `setup` (pure Python, writes PNG itself).
+segno
+# Only used for TLS_SELF_SIGNED=1 (a throw-away certificate on a LAN).
+cryptography

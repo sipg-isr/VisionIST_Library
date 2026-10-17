@@ -1,7 +1,7 @@
 {
   "schema": "registry/schema.json",
   "generated_by": "tools/build_index.py",
-  "count": 16,
+  "count": 17,
   "boxes": [
     {
       "name": "clip",
@@ -878,6 +878,116 @@
         "With 1 image the matching fields are ABSENT, not empty - check before reading them."
       ],
       "path": "boxes/opencv"
+    },
+    {
+      "name": "phone",
+      "key": "phone",
+      "port": 9077,
+      "extra_ports": [
+        {
+          "name": "web",
+          "container": 8062,
+          "host": 9078,
+          "protocol": "http",
+          "env": "WEB_PORT",
+          "description": "The capture page and its upload / results API. Plain HTTP behind a reverse proxy; HTTPS itself when TLS_CERT and TLS_KEY are set."
+        }
+      ],
+      "version": "0.1.0",
+      "summary": "A phone as a capture and annotation terminal: photos + labels in, results back, all polled over gRPC",
+      "runtime": "cpu",
+      "status": "experimental",
+      "tags": [
+        "annotation",
+        "camera",
+        "phone",
+        "web"
+      ],
+      "commands": [
+        "get",
+        "setup",
+        "show",
+        "status",
+        "reset"
+      ],
+      "default_command": "get",
+      "session": {
+        "key": "session_id",
+        "location": "section",
+        "cumulative": false,
+        "note": "One session pairs a program with its phones - its own page config, token, capture queue and results feed. Omitted means \"default\". `get` is not cumulative - it returns what is newer than `after`."
+      },
+      "security": {
+        "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 8,
+        "note": "Each waiting `get` (wait_s > 0) holds a worker, so this is also how many long polls can wait at once."
+      },
+      "maintainers": [
+        "jpcosteira"
+      ],
+      "image": {
+        "repository": "sipgisr/visionist-phone",
+        "registries": [
+          "dockerhub"
+        ],
+        "approx_size_gb": 0.2,
+        "refs": {
+          "dockerhub": "docker.io/sipgisr/visionist-phone:latest"
+        }
+      },
+      "data": {
+        "in": [
+          {
+            "field": "image",
+            "kind": "b",
+            "description": "show: a result image (JPEG, PNG or WebP)"
+          },
+          {
+            "field": "glb",
+            "kind": "b",
+            "description": "show: a binary glTF (.glb) shown as a rotatable 3D view on the phone"
+          },
+          {
+            "field": "text",
+            "kind": "s",
+            "description": "show: text for the card (alternative to parameters.text)"
+          }
+        ],
+        "out": [
+          {
+            "field": "images",
+            "codec": "identity",
+            "when": "get, at least one image",
+            "description": "JPEG/PNG/WebP bytes as the phone sent them, one entry per photo, submissions in order. `meta[i].first_image` and `.n_images` say which entries belong to submission i."
+          },
+          {
+            "field": "meta",
+            "codec": "json",
+            "when": "get",
+            "description": "A list, one object per submission returned: seq, t (box clock), client_t (phone clock), device {id, name}, labels [str], note, sensors (a list aligned with the images - each null or {location, orientation, motion} of numbers), n_images, first_image, mime, bytes. Empty list when nothing is new."
+          },
+          {
+            "field": "qr",
+            "codec": "identity",
+            "when": "setup, a public URL is known",
+            "description": "PNG of the pairing link."
+          }
+        ]
+      },
+      "constraints": [
+        "Pairing: `setup` returns `token` and `url` (token in the #fragment). A phone without the token gets 401; 10 wrong tokens from one address in 5 minutes lock that address out for the rest of the window.",
+        "`get` never blocks longer than `wait_s` and a long poll holds one gRPC worker: with MAX_WORKERS=8 (default) at most 8 pollers can wait at once.",
+        "Everything is held in RAM: a restart, or `reset`, empties it. Bounds: MAX_QUEUE per session, MAX_STORE_MB overall, TTL_S by age. Past a bound the OLDEST submissions are dropped and `get` reports how many in `dropped`.",
+        "`seq` is per session and only increases. A consumer that remembers `next_after` never reads a submission twice and learns of any it missed.",
+        "A live camera preview needs a secure context (https, or localhost). Over plain http to another host the page falls back to the phone's own camera app (an <input capture>), which works everywhere but has no preview inside the page.",
+        "The gRPC port has no authentication, like every box. On a public host publish only the web port and keep 8061 on a private network.",
+        "Photos are stored and forwarded as received (JPEG/PNG/WebP); the box never decodes them, so a corrupt image is only found by whoever reads it.",
+        "Deployment: set PUBLIC_URL, TRUST_PROXY, ALLOWED_HOSTS and (only if the proxy does not strip its prefix) BASE_PATH behind a reverse proxy; set TLS_CERT and TLS_KEY to terminate TLS in the box. See README.md."
+      ],
+      "path": "boxes/phone"
     },
     {
       "name": "pycv",

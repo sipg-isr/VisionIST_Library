@@ -1,0 +1,247 @@
+# phone - VisionIST box manifest
+# Validated against registry/schema.json by CI.
+# Everything downstream (index, README table, build matrix,
+# fleet generator) is generated from this file.
+name: phone
+key: phone
+version: 0.1.0
+summary: 'A phone as a capture and annotation terminal: photos + labels in, results back, all polled over gRPC'
+status: experimental
+runtime: cpu
+tags:
+- phone
+- camera
+- annotation
+- web
+image:
+  repository: sipgisr/visionist-phone
+  registries:
+  - dockerhub
+  platforms:
+  - linux/amd64
+  approx_size_gb: 0.2
+maintainers:
+- github: jpcosteira
+  name: Joao Paulo Costeira
+  email: jpc@isr.tecnico.ulisboa.pt
+
+# The page a phone opens. Not a gRPC port: a client talks to the box on 8061 as
+# always, a PHONE talks to this one. It gets its own permanent host port from
+# registry/ports.json (issued right after the box's own), and the service reads
+# its in-container number from WEB_PORT.
+extra_ports:
+- name: web
+  container: 8062
+  protocol: http
+  env: WEB_PORT
+  description: The capture page and its upload / results API. Plain HTTP behind a reverse proxy; HTTPS itself when TLS_CERT and TLS_KEY are set.
+
+commands:
+  values:
+  - get
+  - setup
+  - show
+  - status
+  - reset
+  default: get
+
+session:
+  key: session_id
+  location: section
+  cumulative: false
+  note: One session pairs a program with its phones - its own page config, token, capture queue and results feed. Omitted means "default". `get` is not cumulative - it returns what is newer than `after`.
+
+parameters:
+- name: title
+  type: string
+  default: VisionIST phone
+  commands:
+  - setup
+  description: Heading shown on the phone page.
+- name: labels
+  type: array
+  default: []
+  commands:
+  - setup
+  description: Strings, one tap-to-toggle button each. Several can be on at once.
+- name: mode
+  type: string
+  default: single
+  enum:
+  - single
+  - burst
+  commands:
+  - setup
+  description: single = one photo per submission; burst = several (up to burst_max) sent together, e.g. views of one object for a 3D result.
+- name: burst_max
+  type: integer
+  default: 8
+  commands:
+  - setup
+  description: Photos per submission in burst mode, at most the box's MAX_IMAGES.
+- name: camera
+  type: string
+  default: environment
+  enum:
+  - environment
+  - user
+  commands:
+  - setup
+  description: Which camera the page opens first (rear or front).
+- name: max_side
+  type: integer
+  default: 1600
+  commands:
+  - setup
+  description: The phone shrinks photos so the longer side is at most this many pixels before sending. 0 = send at full resolution (large uploads).
+- name: jpeg_quality
+  type: number
+  default: 0.9
+  commands:
+  - setup
+  description: JPEG quality 0.3-1.0 for the photos the page encodes.
+- name: sensors
+  type: array
+  default: []
+  commands:
+  - setup
+  description: Any of location, orientation, motion. The page then offers a button (iOS needs a tap) and attaches the latest reading to every photo.
+- name: note
+  type: boolean
+  default: true
+  commands:
+  - setup
+  description: Show a free-text note field.
+- name: custom_labels
+  type: boolean
+  default: false
+  commands:
+  - setup
+  description: Let the person on the phone add labels that are not in `labels`.
+- name: require_label
+  type: boolean
+  default: false
+  commands:
+  - setup
+  description: Refuse a submission with no label.
+- name: public_url
+  type: string
+  commands:
+  - setup
+  description: The external URL of the page root (prefix included), e.g. https://lab.example.org/phone. Overrides the PUBLIC_URL environment variable; without either, `setup` returns only a relative `path` and no QR code.
+- name: rotate
+  type: boolean
+  default: false
+  commands:
+  - setup
+  description: Issue a new token. Phones paired with the old one are refused from then on.
+- name: qr
+  type: boolean
+  default: true
+  commands:
+  - setup
+  description: Return the pairing link as a QR code PNG.
+- name: qr_scale
+  type: integer
+  default: 8
+  commands:
+  - setup
+  description: Pixels per QR module, 2-32.
+- name: after
+  type: integer
+  default: 0
+  commands:
+  - get
+  description: Return submissions with seq greater than this. Pass the previous reply's `next_after`.
+- name: max_items
+  type: integer
+  default: 8
+  commands:
+  - get
+  description: Most submissions per reply (1-64).
+- name: max_mb
+  type: number
+  commands:
+  - get
+  description: Soft cap on the image bytes in one reply. Defaults to 80 % of the box's message limit (32 when unlimited). At least one submission is always returned if there is one.
+- name: wait_s
+  type: number
+  default: 0
+  commands:
+  - get
+  description: Block up to this many seconds for something new instead of returning at once (long poll). Capped by MAX_WAIT_S (default 20) - keep it below your gRPC timeout and any proxy's.
+- name: latest
+  type: boolean
+  default: false
+  commands:
+  - get
+  description: Return only the newest submission newer than `after`.
+- name: pop
+  type: boolean
+  default: false
+  commands:
+  - get
+  description: Delete what is returned (and, with `latest`, everything older). Default false - a repeated or retried get gives the same answer, and entries age out by TTL_S, MAX_QUEUE and MAX_STORE_MB.
+- name: title
+  type: string
+  commands:
+  - show
+  description: Heading of the result card.
+- name: text
+  type: string
+  commands:
+  - show
+  description: Text of the card (up to 20 000 characters). Also accepted as data.text.
+- name: ref_seq
+  type: integer
+  commands:
+  - show
+  description: The seq this result answers; the card shows "Re #seq".
+- name: replace
+  type: boolean
+  default: false
+  commands:
+  - show
+  description: Clear the phone's earlier results first.
+data:
+  in:
+  - field: image
+    kind: b
+    description: 'show: a result image (JPEG, PNG or WebP)'
+  - field: glb
+    kind: b
+    description: 'show: a binary glTF (.glb) shown as a rotatable 3D view on the phone'
+  - field: text
+    kind: s
+    description: 'show: text for the card (alternative to parameters.text)'
+  out:
+  - field: images
+    codec: identity
+    when: get, at least one image
+    description: JPEG/PNG/WebP bytes as the phone sent them, one entry per photo, submissions in order. `meta[i].first_image` and `.n_images` say which entries belong to submission i.
+  - field: meta
+    codec: json
+    when: get
+    description: 'A list, one object per submission returned: seq, t (box clock), client_t (phone clock), device {id, name}, labels [str], note, sensors (a list aligned with the images - each null or {location, orientation, motion} of numbers), n_images, first_image, mime, bytes. Empty list when nothing is new.'
+  - field: qr
+    codec: identity
+    when: setup, a public URL is known
+    description: PNG of the pairing link.
+constraints:
+- 'Pairing: `setup` returns `token` and `url` (token in the #fragment). A phone without the token gets 401; 10 wrong tokens from one address in 5 minutes lock that address out for the rest of the window.'
+- '`get` never blocks longer than `wait_s` and a long poll holds one gRPC worker: with MAX_WORKERS=8 (default) at most 8 pollers can wait at once.'
+- 'Everything is held in RAM: a restart, or `reset`, empties it. Bounds: MAX_QUEUE per session, MAX_STORE_MB overall, TTL_S by age. Past a bound the OLDEST submissions are dropped and `get` reports how many in `dropped`.'
+- '`seq` is per session and only increases. A consumer that remembers `next_after` never reads a submission twice and learns of any it missed.'
+- A live camera preview needs a secure context (https, or localhost). Over plain http to another host the page falls back to the phone's own camera app (an <input capture>), which works everywhere but has no preview inside the page.
+- The gRPC port has no authentication, like every box. On a public host publish only the web port and keep 8061 on a private network.
+- Photos are stored and forwarded as received (JPEG/PNG/WebP); the box never decodes them, so a corrupt image is only found by whoever reads it.
+- 'Deployment: set PUBLIC_URL, TRUST_PROXY, ALLOWED_HOSTS and (only if the proxy does not strip its prefix) BASE_PATH behind a reverse proxy; set TLS_CERT and TLS_KEY to terminate TLS in the box. See README.md.'
+# Server limits. The fleet generator writes these into the compose file as
+# environment variables; override any of them at launch - no rebuild.
+limits:
+  max_message_mb: 64
+  max_workers: 8
+  note: Each waiting `get` (wait_s > 0) holds a worker, so this is also how many long polls can wait at once.
+links:
+  upstream: https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
+  license: Apache-2.0

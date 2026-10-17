@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>VisionIST phone</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="bar">
+  <h1 id="title">VisionIST phone</h1>
+  <span id="pill" class="pill" data-state="off">connecting</span>
+</header>
+
+<main>
+  <section id="pair" hidden>
+    <h2>Pair this phone</h2>
+    <p class="muted">Open the link or scan the QR code the program printed, or paste its pairing token here.</p>
+    <form id="pairForm" class="row">
+      <input id="pairToken" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="pairing token" aria-label="Pairing token">
+      <button class="primary" type="submit">Connect</button>
+    </form>
+  </section>
+
+  <section id="capture" hidden>
+    <div class="stage" id="stage">
+      <video id="cam" playsinline muted autoplay></video>
+      <div id="nocam" class="nocam" hidden>
+        <p id="nocamText"></p>
+      </div>
+      <div class="controls">
+        <button id="flip" class="round" type="button" aria-label="Switch camera" hidden>&#8635;</button>
+        <button id="shutter" class="shutter" type="button" aria-label="Take photo" hidden></button>
+        <label id="pick" class="btn" for="file">Camera app</label>
+        <input id="file" class="sr-only" type="file" accept="image/*" capture="environment" multiple>
+      </div>
+    </div>
+
+    <div id="shots" class="shots" aria-label="Captured photos"></div>
+
+    <h2 id="labelsHead" hidden>Labels</h2>
+    <div id="labels" class="chips" role="group" aria-label="Labels"></div>
+    <form id="customForm" class="row" hidden>
+      <input id="customLabel" maxlength="64" autocomplete="off" placeholder="Add a label" aria-label="Add a label">
+      <button type="submit">Add</button>
+    </form>
+
+    <textarea id="note" rows="2" maxlength="2000" placeholder="Note (optional)" aria-label="Note" hidden></textarea>
+    <button id="sensorBtn" type="button" hidden>Enable location &amp; orientation</button>
+
+    <div class="sendrow">
+      <button id="send" class="primary" type="button" disabled>Send</button>
+      <span id="msg" role="status" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section id="results" hidden>
+    <h2>Results</h2>
+    <div id="cards" class="cards"></div>
+    <p id="empty" class="muted">What the program sends back appears here.</p>
+  </section>
+</main>
+<script src="assets/app.js" defer></script>
+</body>
+</html>

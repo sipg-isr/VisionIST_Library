@@ -54,6 +54,17 @@ def check_box(box: pathlib.Path, schema, seen_keys, seen_repos) -> list[str]:
     if m.get("name") != name:
         problems.append(f"name is {m.get('name')!r} but the directory is {name!r}")
 
+    # extra_ports: the schema checks each entry; these are the cross-entry rules.
+    names, containers = set(), {8061}
+    for ep in m.get("extra_ports") or []:
+        if ep.get("name") in names:
+            problems.append(f"extra_ports: name {ep.get('name')!r} is declared twice")
+        names.add(ep.get("name"))
+        if ep.get("container") in containers:
+            problems.append(f"extra_ports: container port {ep.get('container')} "
+                            f"is already taken (8061 is the gRPC port)")
+        containers.add(ep.get("container"))
+
     key = m.get("key")
     if key in seen_keys:
         problems.append(f"config key {key!r} is already used by {seen_keys[key]}")
