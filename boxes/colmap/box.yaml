@@ -1,0 +1,128 @@
+# colmap - VisionIST box manifest
+#
+# tools/new_box.py copies this and substitutes the name. Everything downstream
+# (the registry index, the README table, the CI build matrix, the fleet
+# generator, CODEOWNERS) is generated from this file, so fill it in properly
+# once rather than repeating yourself in five places.
+#
+# Validate while you work:  python3 tools/validate_boxes.py <name>
+# Full schema:              registry/schema.json
+
+name: colmap
+key: colmap
+version: 0.1.0
+summary: 'COLMAP ground-truth SfM: camera poses + 3D points + intrinsics from plain images (incremental / GLOMAP global mappers)'
+status: experimental
+runtime: gpu-or-cpu
+tags: [reconstruction, geometry, sfm, ground-truth]
+
+image:
+  repository: sipgisr/visionist-colmap
+  registries: [dockerhub]
+  platforms: [linux/amd64]
+
+maintainers:
+  - github: jpcosteira
+    name: Joao Paulo Costeira
+    email: jpc@isr.tecnico.ulisboa.pt
+
+commands:
+  values: [reconstruct, log, reset]
+  default: reconstruct
+
+parameters:
+  - name: mapper
+    type: string
+    default: incremental
+    enum: [incremental, global, hierarchical]
+    description: 'incremental = COLMAP reference (strictest GT); global = GLOMAP, 1-2 orders of magnitude faster; hierarchical = very large sets.'
+  - name: matcher
+    type: string
+    default: auto
+    enum: [auto, exhaustive, sequential]
+    description: 'auto = exhaustive, unless image_names are sent (then sequential)'
+  - name: sequential_overlap
+    type: integer
+    default: 5
+    description: 'sequential matcher: how many frames ahead of the current one to try matching to.'
+  - name: max_image_size
+    type: integer
+    default: 3200
+    description: Feature-extraction resolution cap - the biggest speed/quality lever.
+  - name: max_num_features
+    type: integer
+    default: 8192
+  - name: use_gpu
+    type: string
+    default: auto
+    enum: [auto, "true", "false"]
+  - name: single_camera
+    type: boolean
+    default: true
+    description: 'One shared camera model for the whole set (single moving rig) vs per-image cameras. Keep true unless you genuinely mix sensors.'
+  - name: intrinsics
+    type: string
+    default: ""
+    description: 'Optional fixed camera: "MODEL W H params...", e.g. "PINHOLE 640 480 500 500 320 240". Empty = self-calibrate (default).'
+  - name: max_runtime_s
+    type: number
+    default: 0
+    description: Runtime budget for the whole pipeline; 0 = unlimited. On expiry the box SIGTERMs COLMAP (which writes partial results) and reports partial=true.
+  - name: tail
+    type: integer
+    default: 100
+    description: 'command=log: how many log lines to return.'
+
+data:
+  in:
+    - field: images
+      kind: bb
+      required: true
+      description: JPEG/PNG bytes of the view set
+    - field: image_names
+      kind: ss
+      required: false
+      description: 'Ordered names; their ORDER defines video order for the sequential matcher.'
+  out:
+    - field: cameras
+      codec: numpy
+      shape: (F, 3, 4)
+      description: per registered image [R | t], world -> camera
+    - field: points
+      codec: numpy
+      shape: (P, 3)
+    - field: point_colors
+      codec: numpy
+      shape: (P, 3)
+      description: uint8 RGB per point
+    - field: intrinsics
+      codec: numpy
+      shape: (F, 3, 3)
+      description: pinhole approximation of each camera model
+    - field: frame_ids
+      codec: numpy
+      shape: (F,)
+      description: input index (position in `images`) of each row
+    - field: image_names
+      codec: numpy
+      shape: (F,)
+      description: registered image names
+    - field: log
+      codec: identity
+      when: 'command=log'
+      description: 'UTF-8 tail of COLMAP live output (job state runs in config_extra: running/stage/elapsed_s/lines)'
+
+constraints:
+  - 'This is a ground-truth box: reconstruct is a SINGLE long call. The gRPC reply arrives only when COLMAP finishes; poll command=log (or "docker logs") while waiting, and raise the client deadline. Limits below give 1 worker for the job + 1 to serve log/reset.'
+  - 'One reconstruction at a time; a second concurrent reconstruct returns an error, not a queue.'
+  - 'reconstruction runs untrusted image BYTES through a C++ binary but executes no user code; image content is still untrusted input data.'
+  - 'reset cancels the running reconstruction (SIGTERM, then SIGKILL). It is the box''s cancel, unlike no-op resets elsewhere.'
+
+limits:
+  max_message_mb: 512
+  max_workers: 2
+
+links:
+  upstream: https://github.com/colmap/colmap
+  paper: Pan, Barath, Pollefeys, Schoenberger. Global Structure-from-Motion Revisited (GLOMAP, now COLMAP's `global_mapper`). ECCV 2024.
+  license: BSD-3-Clause

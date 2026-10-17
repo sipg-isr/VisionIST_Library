@@ -19,11 +19,7 @@
     "sfm": 9074,
     "pycv": 9075,
     "mediapipe": 9076,
-    "phone": 9077
-  },
-  "extra_ports": {
-    "phone": {
-      "web": 9078
-    }
+    "colmap": 9077,
+    "abot_recon": 9078
   }
 }

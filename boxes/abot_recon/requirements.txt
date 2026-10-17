@@ -1,0 +1,7 @@
+grpcio
+protobuf
+grpcio-reflection
+grpcio-status
+numpy
+opencv-python-headless
+huggingface_hub

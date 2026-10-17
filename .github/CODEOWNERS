@@ -7,7 +7,9 @@
 /registry/     @jpcosteira
 /.github/      @jpcosteira
 
+/boxes/abot_recon/                      @jpcosteira
 /boxes/clip/                            @jpcosteira
+/boxes/colmap/                          @jpcosteira
 /boxes/d4rt/                            @jpcosteira
 /boxes/features/                        @jpcosteira
 /boxes/lang_sam/                        @jpcosteira
