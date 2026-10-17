@@ -13,6 +13,7 @@ Layers:
   2. the web contract     pairing, upload validation, limits, the feed, media
   3. the store            eviction and `dropped`, TTL, sessions, isolation
   5. streaming            frames in, `latest` out, depth/LiDAR part, limits
+  6. session expiry       SESSION_TTL_S idle removal, MAX_SESSIONS default
   4. deployment modes     behind a proxy (BASE_PATH, TRUST_PROXY, ALLOWED_HOSTS),
                           direct TLS (self-signed), security headers
 """
@@ -995,10 +996,88 @@ def test_stream():
           Settings.from_env({"MAX_FRAME_MB": "64"}, message_cap=10 * MB).max_frame_bytes == int(8 * MB))
 
 
+# ===================================================== 9. session expiry
+def test_session_expiry():
+    print("\n-- sessions: idle expiry (SESSION_TTL_S) and the raised MAX_SESSIONS")
+    d = Settings()
+    check("defaults: MAX_SESSIONS 1000, SESSION_TTL_S one week",
+          d.max_sessions == 1000 and d.session_ttl_s == 604800)
+    e = Settings.from_env({"MAX_SESSIONS": "5", "SESSION_TTL_S": "60"}, message_cap=-1)
+    check("env overrides both", e.max_sessions == 5 and e.session_ttl_s == 60)
+    check("SESSION_TTL_S=0 is accepted (never expire)",
+          Settings.from_env({"SESSION_TTL_S": "0"}, message_cap=-1).session_ttl_s == 0)
+
+    WEEK = 604800
+    rig = Rig(session_ttl_s=WEEK)
+    try:
+        cfgs = {n: setup(rig, session=None, **{}) if False else rig.call("setup", {"public_url": "https://p.example"}, session=n)[0]
+                for n in ("idle", "polled", "phone", "status_only", "fresh")}
+        sess = {n: rig.store.session(n) for n in cfgs}
+        for n in ("idle", "polled", "phone", "status_only"):
+            sess[n].last_active -= WEEK + 100        # all but "fresh" look a week and more idle
+        sess["fresh"].last_active -= WEEK - 3600      # idle just under a week
+
+        # activity that counts, each by its own route, all within a week of "now"
+        rig.call("get", session="polled")                                   # the program polled
+        rig.http("GET", "/api/config?device=d1", cfgs["phone"]["token"])    # a phone connected
+        rig.call("status", session="status_only")                           # status is NOT activity
+        removed = rig.store.sweep()
+        left = set(rig.store.session_ids())
+        check("sweep removes the sessions idle > a week and counts them", removed == 2, str(removed))
+        check("a program poll keeps a session", "polled" in left)
+        check("phone traffic keeps a session", "phone" in left)
+        check("a session idle just under a week stays", "fresh" in left)
+        check("idle and status-only sessions are gone", "idle" not in left and "status_only" not in left)
+        r, _ = rig.call("get", session="idle")
+        check("a removed session answers like a reset one", r["status"] == "error" and "setup" in r["error"])
+        st, _ = rig.jget("/api/config", token=cfgs["idle"]["token"])
+        check("its pairing token no longer works (401)", st == 401)
+        check("its memory was released", rig.store._bytes == 0)
+
+        # each kind of activity refreshes last_active
+        s = rig.store.session("fresh"); tok = cfgs["fresh"]["token"]
+        for label, act in (
+                ("a streamed frame", lambda: rig.frame(tok, jpeg(1), {})),
+                ("a submitted photo", lambda: rig.submit(tok, [jpeg(1)], {})),
+                ("show", lambda: rig.call("show", {"text": "x"}, session="fresh")),
+                ("latest", lambda: rig.call("latest", session="fresh")),
+                ("setup again", lambda: rig.call("setup", {}, session="fresh"))):
+            s.last_active -= 5000
+            before = s.last_active
+            act()
+            check(f"{label} refreshes the session's activity", s.last_active > before + 4000)
+        r, _ = rig.call("status", session="fresh")
+        check("status reports idle_s and the session count", r["idle_s"] < 5 and r["sessions_count"] == 3)
+
+        # a poller waiting on a session that expires is released with an error
+        sess_wait = rig.store.session("polled")
+        out = {}
+        def waiter():
+            out["r"] = rig.call("latest", {"after": 10 ** 6, "wait_s": 5}, session="polled")[0]
+        t = threading.Thread(target=waiter); t.start()
+        time.sleep(0.4)
+        sess_wait.last_active -= WEEK + 100
+        rig.store.sweep()
+        t.join(8)
+        check("a long poll on an expired session returns an error, not a hang",
+              not t.is_alive() and out.get("r", {}).get("status") == "error")
+    finally:
+        rig.close()
+
+    rig = Rig(session_ttl_s=0)
+    try:
+        rig.call("setup", {}, session="old")
+        rig.store.session("old").last_active -= 10 ** 9
+        rig.store.sweep()
+        check("SESSION_TTL_S=0 never expires a session", "old" in rig.store.session_ids())
+    finally:
+        rig.close()
+
+
 def main():
     t0 = time.time()
     for fn in (test_grpc, test_roundtrip, test_upload_validation, test_security,
-               test_store, test_deployment, test_over_grpc, test_stream):
+               test_store, test_deployment, test_over_grpc, test_stream, test_session_expiry):
         try:
             fn()
         except Exception as e:                              # noqa: BLE001

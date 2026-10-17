@@ -124,6 +124,7 @@ class Session:
         self.config = config
         self.config_version = 1
         self.created = now
+        self.last_active = now                    # setup, phone traffic, program get/latest, show
         self.queue = collections.deque()          # Submissions, ascending seq
         self.next_seq = 1
         self.evicted = collections.deque(maxlen=10000)   # seqs dropped unread
@@ -167,6 +168,7 @@ class Store:
                 self._sessions[sid] = sess
                 self._by_token[_hash(sess.token)] = sess
             else:
+                sess.last_active = self._clock()
                 if sess.config != config:
                     sess.config = config
                     sess.config_version += 1
@@ -198,23 +200,26 @@ class Store:
         """Drop one session, or all of them. Returns how many were removed."""
         with self._cond:
             gone = [sid] if sid is not None else list(self._sessions)
-            n = 0
-            for s in gone:
-                sess = self._sessions.pop(s, None)
-                if sess is None:
-                    continue
-                self._by_token.pop(_hash(sess.token), None)
-                self._bytes -= sum(x.nbytes for x in sess.queue)
-                self._bytes -= sum(c.nbytes for c in sess.cards)
-                self._bytes -= sess.latest.nbytes if sess.latest else 0
-                n += 1
+            n = sum(1 for s in gone if self._drop_session(s))
             self._cond.notify_all()
             return n
+
+    def _drop_session(self, sid):
+        """Remove one session and what it holds. Caller holds the lock."""
+        sess = self._sessions.pop(sid, None)
+        if sess is None:
+            return False
+        self._by_token.pop(_hash(sess.token), None)
+        self._bytes -= sum(x.nbytes for x in sess.queue)
+        self._bytes -= sum(c.nbytes for c in sess.cards)
+        self._bytes -= sess.latest.nbytes if sess.latest else 0
+        return True
 
     def touch_device(self, sess, device_id, name=None):
         now = self._clock()
         with self._cond:
             sess.last_phone = now
+            sess.last_active = now
             if device_id:
                 sess.devices[device_id] = {"name": name or "phone", "last_seen": now}
                 while len(sess.devices) > 32:
@@ -231,6 +236,7 @@ class Store:
                 raise StoreError("session no longer exists")
             sub = Submission(sess.next_seq, self._clock(), images, mimes, labels,
                              note, sensors, device, client_t)
+            sess.last_active = sub.t
             sess.next_seq += 1
             sess.queue.append(sub)
             self._bytes += sub.nbytes
@@ -252,6 +258,7 @@ class Store:
                 raise StoreError("session no longer exists")
             now = self._clock()
             sess.last_frame_t = now
+            sess.last_active = now
             n = self._set_latest(sess, Latest(
                 sess.next_n, now, "stream", None, [image], [mime], labels, note,
                 sensors, device, client_t, size, depth, depth_info))
@@ -274,7 +281,7 @@ class Store:
                 if fresh or remaining <= 0 or (should_stop and should_stop()):
                     break
                 self._cond.wait(timeout=min(remaining, 0.5))
-            sess.last_get = self._clock()
+            sess.last_get = sess.last_active = self._clock()
             now = self._clock()
             info = {"n": cur.n if cur else 0,
                     "streaming": sess.last_frame_t is not None
@@ -301,7 +308,7 @@ class Store:
                 if avail or remaining <= 0 or (should_stop and should_stop()):
                     break
                 self._cond.wait(timeout=min(remaining, 0.5))
-            sess.last_get = self._clock()
+            sess.last_get = sess.last_active = self._clock()
             if latest and avail:
                 avail = avail[-1:]
             chosen, total = [], 0
@@ -341,6 +348,7 @@ class Store:
                 sess.cards.clear()
             card = Card(sess.next_card, self._clock(), title, text, ref_seq,
                         image, image_mime, glb)
+            sess.last_active = card.t
             sess.next_card += 1
             sess.cards.append(card)
             self._bytes += card.nbytes
@@ -372,6 +380,8 @@ class Store:
                           "oldest_seq": q[0].seq if q else None,
                           "newest_seq": q[-1].seq if q else None},
                 "next_seq": sess.next_seq,
+                "idle_s": round(max(0.0, now - sess.last_active), 1),
+                "sessions_count": len(self._sessions),
                 "latest": None if sess.latest is None else {
                     "n": sess.latest.n, "source": sess.latest.source,
                     "age_s": round(max(0.0, now - sess.latest.t), 1)},
@@ -396,7 +406,8 @@ class Store:
 
     # ------------------------------------------------------ housekeeping
     def sweep(self):
-        """Drop what has outlived ``TTL_S``. Returns how many items expired."""
+        """Drop what has outlived ``TTL_S``, and sessions idle for ``SESSION_TTL_S``.
+        Returns how many items (data items and whole sessions) expired."""
         cutoff = self._clock() - self.s.ttl_s
         n = 0
         with self._cond:
@@ -410,6 +421,11 @@ class Store:
                     n += 1
                 while sess.cards and sess.cards[0].t < cutoff:
                     self._bytes -= sess.cards.popleft().nbytes
+                    n += 1
+            if self.s.session_ttl_s > 0:
+                idle_cut = self._clock() - self.s.session_ttl_s
+                for sid in [k for k, v in self._sessions.items() if v.last_active < idle_cut]:
+                    self._drop_session(sid)
                     n += 1
             if n:
                 self._cond.notify_all()

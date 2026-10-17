@@ -181,7 +181,8 @@ The certificate files are re-read hourly, so renewals are picked up without a re
 | `FRAME_RATE_PER_S` | 30 | streamed frames per address per second (429 beyond; phones behind one NAT share it) |
 | `MAX_QUEUE` | 200 | submissions kept per session |
 | `MAX_STORE_MB` | 256 | all held data, all sessions |
-| `MAX_SESSIONS` | 32 | |
+| `MAX_SESSIONS` | 1000 | Most sessions held at once; a new `setup` beyond this is refused. |
+| `SESSION_TTL_S` | 604800 | A session idle this long (one week) is removed with everything it holds (latest image, depth, queue, token). `0` = never expire. A program's `get`/`latest`/`show`/`setup` and any phone traffic count as activity; `status` does not. |
 | `TTL_S` | 3600 | unread submissions and results expire |
 | `RATE_PER_MIN` | 60 | submissions per address per minute |
 | `AUTH_FAIL_LIMIT` | 10 | wrong tokens per address per 5 min |

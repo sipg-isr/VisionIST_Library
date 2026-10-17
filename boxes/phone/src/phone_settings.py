@@ -44,7 +44,8 @@ Every variable and its default:
 ``FRAME_RATE_PER_S``    30        streamed frames per client address per second
 ``MAX_QUEUE``           200       submissions kept per session
 ``MAX_STORE_MB``        256       everything held in memory, all sessions
-``MAX_SESSIONS``        32
+``MAX_SESSIONS``        1000
+``SESSION_TTL_S``       604800    a session idle this long (one week) is removed; 0 = never
 ``TTL_S``               3600      an unread submission or result expires
 ``RATE_PER_MIN``        60        submissions per client address per minute
 ``AUTH_FAIL_LIMIT``     10        wrong tokens per address per 5 min, then 429
@@ -122,7 +123,8 @@ class Settings:
     frame_rate_per_s: int = 30
     max_queue: int = 200
     max_store_mb: int = 256
-    max_sessions: int = 32
+    max_sessions: int = 1000
+    session_ttl_s: int = 604800
     ttl_s: int = 3600
     rate_per_min: int = 60
     auth_fail_limit: int = 10
@@ -184,7 +186,8 @@ class Settings:
             frame_rate_per_s=_int(env, "FRAME_RATE_PER_S", 30, 1),
             max_queue=_int(env, "MAX_QUEUE", 200, 1),
             max_store_mb=_int(env, "MAX_STORE_MB", 256, 1),
-            max_sessions=_int(env, "MAX_SESSIONS", 32, 1),
+            max_sessions=_int(env, "MAX_SESSIONS", 1000, 1),
+            session_ttl_s=_int(env, "SESSION_TTL_S", 604800, 0),
             ttl_s=_int(env, "TTL_S", 3600, 1),
             rate_per_min=_int(env, "RATE_PER_MIN", 60, 1),
             auth_fail_limit=_int(env, "AUTH_FAIL_LIMIT", 10, 1),
