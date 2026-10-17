@@ -218,11 +218,11 @@ def test_grpc():
         rig.call("setup", {"labels": ["door", "valve", "crack"], "mode": "burst",
                            "burst_max": 4, "title": "Plant survey",
                            "sensors": ["location", "orientation"]})
-        cfg3, _ = rig.call("setup", {"labels": ["door"], "public_url": "http://192.168.1.20:9078"})
+        cfg3, _ = rig.call("setup", {"labels": ["door"], "public_url": "http://192.168.1.20:9080"})
         check("setup: changed config bumps the version", cfg3["config_version"] > 1)
         check("setup: plain http to a LAN host warns about the camera",
               cfg3["https"] is False and any("https" in w for w in cfg3["warnings"]))
-        cfg4, _ = rig.call("setup", {"labels": ["door"], "public_url": "http://localhost:9078"})
+        cfg4, _ = rig.call("setup", {"labels": ["door"], "public_url": "http://localhost:9080"})
         check("setup: plain http to localhost does not warn", not cfg4["warnings"])
         cfg5, _ = rig.call("setup", {"labels": ["door"], "rotate": True,
                                      "public_url": "https://phone.example.org"})
@@ -747,7 +747,7 @@ def test_deployment():
     tmp = tempfile.mkdtemp(prefix="phone_tls_")
     rig = Rig(tls_self_signed=True, tls_dir=tmp, tls_san=("localhost", "127.0.0.1"))
     try:
-        cfg, _ = rig.call("setup", {"labels": ["a"], "public_url": "https://127.0.0.1:9078"})
+        cfg, _ = rig.call("setup", {"labels": ["a"], "public_url": "https://127.0.0.1:9080"})
         st, hdr, raw = rig.http("GET", "/healthz")
         check("tls: serves https", st == 200 and rig.tls)
         check("tls: HSTS sent", "strict-transport-security" in hdr)

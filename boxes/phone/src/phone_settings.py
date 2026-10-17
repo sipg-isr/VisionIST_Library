@@ -18,7 +18,7 @@ The proxy terminates TLS and the box speaks plain HTTP to it::
 **Directly on a public server.** The box terminates TLS itself::
 
     TLS_CERT=/certs/fullchain.pem  TLS_KEY=/certs/privkey.pem
-    PUBLIC_URL=https://phone.example.org:9078
+    PUBLIC_URL=https://phone.example.org:9080
     ALLOWED_HOSTS=phone.example.org
 
 (``TLS_SELF_SIGNED=1`` generates a throw-away certificate for a LAN. Phones

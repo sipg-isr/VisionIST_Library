@@ -5,7 +5,7 @@ A phone as a capture and annotation terminal, **and the phone side is a box like
 ```python
 from visionist_client import Visionist
 
-phone = Visionist("phonebox:9077")                       # the gRPC port, as always
+phone = Visionist("phonebox:9079")                       # the gRPC port, as always
 setup = phone.run(config={"phone": {"command": "setup",
                                     "title": "Mug check",
                                     "labels": ["handle", "chip", "ok"],
@@ -29,8 +29,8 @@ Two ports are involved, and they are not alike:
 
 | port | host default | who talks to it | protocol |
 |---|---|---|---|
-| gRPC `8061` | `9077` | **your programs** | Visionist `Process`, no authentication |
-| web `8062` | `9078` | **phones** | HTTP, or HTTPS with `TLS_CERT`/`TLS_KEY` |
+| gRPC `8061` | `9079` | **your programs** | Visionist `Process`, no authentication |
+| web `8062` | `9080` | **phones** | HTTP, or HTTPS with `TLS_CERT`/`TLS_KEY` |
 
 The web port is declared as an `extra_ports` entry in `box.yaml` (`name: web`, env `WEB_PORT`), which is how the registry, the port ledger and the fleet generator know about it.
 
@@ -76,7 +76,7 @@ nginx, stripping the prefix (so `BASE_PATH` stays unset):
 
 ```nginx
 location /phone/ {
-    proxy_pass         http://127.0.0.1:9078/;
+    proxy_pass         http://127.0.0.1:9080/;
     proxy_set_header   Host              $host;
     proxy_set_header   X-Forwarded-For   $remote_addr;
     proxy_set_header   X-Forwarded-Proto $scheme;
@@ -91,12 +91,12 @@ Caddy:
 ```
 lab.example.org {
     handle_path /phone/* {
-        reverse_proxy 127.0.0.1:9078
+        reverse_proxy 127.0.0.1:9080
     }
 }
 ```
 
-If the proxy forwards the prefix untouched, set `BASE_PATH=/phone` and drop the stripping. With `TRUST_PROXY=0` (the default) the box uses the socket address and ignores `X-Forwarded-*`, so rate limits and lockouts would all hit the proxy's address; set the right hop count. Bind the box's host ports to loopback so only the proxy reaches them: `make_fleet.py --bind 127.0.0.1` does that for gRPC ports, and the web port mapping can be edited to `127.0.0.1:9078:8062`.
+If the proxy forwards the prefix untouched, set `BASE_PATH=/phone` and drop the stripping. With `TRUST_PROXY=0` (the default) the box uses the socket address and ignores `X-Forwarded-*`, so rate limits and lockouts would all hit the proxy's address; set the right hop count. Bind the box's host ports to loopback so only the proxy reaches them: `make_fleet.py --bind 127.0.0.1` does that for gRPC ports, and the web port mapping can be edited to `127.0.0.1:9080:8062`.
 
 ## Deployment B: directly on a public server
 
@@ -108,13 +108,13 @@ services:
     environment:
       TLS_CERT: /certs/fullchain.pem
       TLS_KEY: /certs/privkey.pem
-      PUBLIC_URL: https://phone.example.org:9078
+      PUBLIC_URL: https://phone.example.org:9080
       ALLOWED_HOSTS: phone.example.org
     volumes:
       - /etc/letsencrypt/live/phone.example.org:/certs:ro
     ports:
-      - "127.0.0.1:9077:8061"      # gRPC: private
-      - "9078:8062"                # web: public
+      - "127.0.0.1:9079:8061"      # gRPC: private
+      - "9080:8062"                # web: public
 ```
 
 The certificate files are re-read hourly, so renewals are picked up without a restart (mount the directory, not single files). For a LAN or a quick test, `TLS_SELF_SIGNED=1` (optionally `TLS_SAN=phone.lan,192.168.1.20`) generates a certificate at startup; phones warn about it and some will not give camera access over it. Port 443 needs either `WEB_PORT=443` with the right capability, or a host mapping `443:8062`.
