@@ -5,7 +5,7 @@
 name: phone
 key: phone
 version: 0.1.0
-summary: 'A phone as a capture and annotation terminal: photos + labels in, results back, all polled over gRPC'
+summary: 'A phone as a capture and annotation terminal: photos or a live camera stream + labels + sensors in, results back, all read over gRPC'
 status: experimental
 runtime: cpu
 tags:
@@ -13,6 +13,8 @@ tags:
 - camera
 - annotation
 - web
+- stream
+- lidar
 image:
   repository: sipgisr/visionist-phone
   registries:
@@ -39,6 +41,7 @@ extra_ports:
 commands:
   values:
   - get
+  - latest
   - setup
   - show
   - status
@@ -105,7 +108,25 @@ parameters:
   default: []
   commands:
   - setup
-  description: Any of location, orientation, motion. The page then offers a button (iOS needs a tap) and attaches the latest reading to every photo.
+  description: 'Any of location, orientation, motion, lidar. The page then offers an Enable sensors button (iOS needs a tap) and attaches the latest reading to every photo and every streamed frame. `lidar` from the web page only ever reports {available: 0} - browsers cannot read LiDAR; a native client posts real depth to /api/frame (see README).'
+- name: stream_fps
+  type: number
+  default: 5
+  commands:
+  - setup
+  description: Frames per second the page's Stream button sends, 0.2-30. Frames go one at a time, so a slow link lowers the rate instead of queueing.
+- name: stream_max_side
+  type: integer
+  default: 640
+  commands:
+  - setup
+  description: Streamed frames are shrunk so the longer side is at most this many pixels. 0 = full camera resolution.
+- name: stream_quality
+  type: number
+  default: 0.7
+  commands:
+  - setup
+  description: JPEG quality 0.3-1.0 of streamed frames.
 - name: note
   type: boolean
   default: true
@@ -152,7 +173,9 @@ parameters:
   default: 0
   commands:
   - get
-  description: Return submissions with seq greater than this. Pass the previous reply's `next_after`.
+  - latest
+  description: 'get: return submissions with seq greater than this (pass the previous reply''s `next_after`). latest: return the frame only if its `n` is greater than this (pass the previous reply''s `n`); otherwise count 0.'
+
 - name: max_items
   type: integer
   default: 8
@@ -169,7 +192,14 @@ parameters:
   default: 0
   commands:
   - get
+  - latest
   description: Block up to this many seconds for something new instead of returning at once (long poll). Capped by MAX_WAIT_S (default 20) - keep it below your gRPC timeout and any proxy's.
+- name: include_images
+  type: boolean
+  default: true
+  commands:
+  - latest
+  description: false returns only the metadata (labels, sensors, age...) without the image or depth bytes - cheap to poll.
 - name: latest
   type: boolean
   default: false
@@ -217,12 +247,17 @@ data:
   out:
   - field: images
     codec: identity
-    when: get, at least one image
+    when: get with at least one image; latest
+
     description: JPEG/PNG/WebP bytes as the phone sent them, one entry per photo, submissions in order. `meta[i].first_image` and `.n_images` say which entries belong to submission i.
   - field: meta
     codec: json
-    when: get
-    description: 'A list, one object per submission returned: seq, t (box clock), client_t (phone clock), device {id, name}, labels [str], note, sensors (a list aligned with the images - each null or {location, orientation, motion} of numbers), n_images, first_image, mime, bytes. Empty list when nothing is new.'
+    when: get, latest
+    description: 'get: a list, one object per submission returned: seq, t (box clock), client_t (phone clock), device {id, name}, labels [str], note, sensors (a list aligned with the images - each null or {location, orientation, motion} of numbers), n_images, first_image, mime, bytes. Empty list when nothing is new. latest: ONE object (not a list) - n, source (stream|photo), seq (photo only), age_s, t, client_t, device, labels, note, sensors (a one-element list for a frame), size [w, h], n_images, mime, bytes, depth.'
+  - field: depth
+    codec: identity
+    when: latest, the frame came with a depth map
+    description: Raw depth map, row-major little-endian, no header. `meta.depth` gives width, height, dtype (float32 or uint16), unit (m or mm), bytes and optional intrinsics.
   - field: qr
     codec: identity
     when: setup, a public URL is known
@@ -234,6 +269,8 @@ constraints:
 - '`seq` is per session and only increases. A consumer that remembers `next_after` never reads a submission twice and learns of any it missed.'
 - A live camera preview needs a secure context (https, or localhost). Over plain http to another host the page falls back to the phone's own camera app (an <input capture>), which works everywhere but has no preview inside the page.
 - The gRPC port has no authentication, like every box. On a public host publish only the web port and keep 8061 on a private network.
+- 'Streaming: the page''s Stream button POSTs frames to /api/frame, one at a time. Frames are NOT queued: they overwrite a single `latest` slot per session (a photo submission overwrites it too), so a stream never fills the box and `get` is unaffected. `latest` is read-only and does not consume anything; pass the previous `n` as `after` to avoid handling a frame twice. Rates are bounded by FRAME_RATE_PER_S per address and MAX_FRAME_MB per frame.'
+- 'LiDAR: a web page cannot read it (iOS Safari has no WebXR; ARKit depth is native-only). With sensors including lidar the page reports sensors.lidar = {available: 0}. A native iPhone/iPad client can POST a depth map (a `depth` part + meta.depth) to /api/frame with the pairing token; `latest` then returns it as data.depth.'
 - Photos are stored and forwarded as received (JPEG/PNG/WebP); the box never decodes them, so a corrupt image is only found by whoever reads it.
 - 'Deployment: set PUBLIC_URL, TRUST_PROXY, ALLOWED_HOSTS and (only if the proxy does not strip its prefix) BASE_PATH behind a reverse proxy; set TLS_CERT and TLS_KEY to terminate TLS in the box. See README.md.'
 # Server limits. The fleet generator writes these into the compose file as

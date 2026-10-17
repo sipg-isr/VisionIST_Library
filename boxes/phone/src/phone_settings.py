@@ -40,6 +40,8 @@ Every variable and its default:
 ``TLS_DIR``             /tmp/phone-tls   where a generated certificate lives
 ``MAX_SUBMIT_MB``       24        bytes accepted per submission (all images)
 ``MAX_IMAGES``          12        images per submission, at most
+``MAX_FRAME_MB``        8         bytes accepted per streamed frame (image + depth)
+``FRAME_RATE_PER_S``    30        streamed frames per client address per second
 ``MAX_QUEUE``           200       submissions kept per session
 ``MAX_STORE_MB``        256       everything held in memory, all sessions
 ``MAX_SESSIONS``        32
@@ -116,6 +118,8 @@ class Settings:
     tls_dir: str = "/tmp/phone-tls"
     max_submit_mb: int = 24
     max_images: int = 12
+    max_frame_mb: int = 8
+    frame_rate_per_s: int = 30
     max_queue: int = 200
     max_store_mb: int = 256
     max_sessions: int = 32
@@ -135,6 +139,13 @@ class Settings:
     @property
     def max_submit_bytes(self):
         limit = self.max_submit_mb * MB
+        if self.message_cap > 0:
+            limit = min(limit, int(self.message_cap * 0.8))
+        return limit
+
+    @property
+    def max_frame_bytes(self):
+        limit = self.max_frame_mb * MB
         if self.message_cap > 0:
             limit = min(limit, int(self.message_cap * 0.8))
         return limit
@@ -169,6 +180,8 @@ class Settings:
             tls_dir=str(env.get("TLS_DIR") or "/tmp/phone-tls"),
             max_submit_mb=_int(env, "MAX_SUBMIT_MB", 24, 1),
             max_images=_int(env, "MAX_IMAGES", 12, 1, 64),
+            max_frame_mb=_int(env, "MAX_FRAME_MB", 8, 1),
+            frame_rate_per_s=_int(env, "FRAME_RATE_PER_S", 30, 1),
             max_queue=_int(env, "MAX_QUEUE", 200, 1),
             max_store_mb=_int(env, "MAX_STORE_MB", 256, 1),
             max_sessions=_int(env, "MAX_SESSIONS", 32, 1),

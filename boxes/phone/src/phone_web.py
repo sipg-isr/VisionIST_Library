@@ -7,6 +7,8 @@ Routes (all relative to ``BASE_PATH``, if one is set):
     GET  /healthz           liveness for a proxy / orchestrator, no token
     GET  /api/config        the session's config + limits          [token]
     POST /api/submit        multipart: image parts + one meta part [token]
+    POST /api/frame         one streamed frame: image + meta (+ depth); it
+                            replaces the session's "latest" slot    [token]
     GET  /api/feed          results pushed with `show`; long-poll  [token]
     GET  /api/media/<id>/image|glb                                 [token]
 
@@ -43,6 +45,10 @@ MAX_META_BYTES = 16 * 1024
 MAX_LABELS = 32
 MAX_LABEL_CHARS = 64
 MAX_NOTE_CHARS = 2000
+SENSOR_GROUPS = ("location", "orientation", "motion", "lidar")
+DEPTH_DTYPES = {"float32": 4, "uint16": 2}
+DEPTH_UNITS = ("m", "mm")
+MAX_DEPTH_SIDE = 4096
 
 _CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
         "img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' blob:; "
@@ -68,7 +74,7 @@ def _clean_sensor_reading(raw, allowed_groups):
     if not isinstance(raw, dict):
         return None
     out = {}
-    for group in ("location", "orientation", "motion"):
+    for group in SENSOR_GROUPS:
         values = raw.get(group)
         if group not in allowed_groups or not isinstance(values, dict):
             continue
@@ -91,17 +97,65 @@ def _clean_sensors(raw, allowed_groups, n_images):
     return readings if any(readings) else None
 
 
-def clean_meta(raw, config, n_images=1):
-    """Validate the phone's ``meta`` part against the session config.
-
-    Returns ``(labels, note, sensors, device, client_t)`` or raises ApiError.
-    """
+def load_meta(raw):
     try:
         meta = json.loads(raw.decode("utf-8")) if raw else {}
     except (UnicodeDecodeError, ValueError):
         raise ApiError(400, "meta is not valid JSON")
     if not isinstance(meta, dict):
         raise ApiError(400, "meta must be an object")
+    return meta
+
+
+def clean_size(raw):
+    """``[width, height]`` of the streamed frame as the phone encoded it, or None."""
+    if (isinstance(raw, list) and len(raw) == 2
+            and all(isinstance(x, int) and not isinstance(x, bool) and 0 < x <= 65536
+                    for x in raw)):
+        return list(raw)
+    return None
+
+
+def clean_depth(raw, nbytes):
+    """Describe a depth map that came as its own part (e.g. LiDAR from a native
+    ARKit client). The box does not decode it, but it checks that the declared
+    shape matches the byte count so a consumer can ``frombuffer`` it blindly.
+
+    ``{width, height, dtype: float32|uint16, unit: m|mm}`` plus optional
+    ``intrinsics`` (fx, fy, cx, cy... as plain numbers). Row-major,
+    little-endian, no header.
+    """
+    if not isinstance(raw, dict):
+        raise ApiError(400, "meta.depth is required when a depth part is sent")
+    dtype, unit = raw.get("dtype"), raw.get("unit", "m")
+    w, h = raw.get("width"), raw.get("height")
+    if dtype not in DEPTH_DTYPES:
+        raise ApiError(400, f"depth.dtype must be one of {sorted(DEPTH_DTYPES)}")
+    if unit not in DEPTH_UNITS:
+        raise ApiError(400, f"depth.unit must be one of {list(DEPTH_UNITS)}")
+    if not all(isinstance(x, int) and not isinstance(x, bool) and 0 < x <= MAX_DEPTH_SIDE
+               for x in (w, h)):
+        raise ApiError(400, f"depth.width and depth.height must be integers in 1..{MAX_DEPTH_SIDE}")
+    if w * h * DEPTH_DTYPES[dtype] != nbytes:
+        raise ApiError(400, f"depth part is {nbytes} bytes; {w}x{h} {dtype} needs "
+                            f"{w * h * DEPTH_DTYPES[dtype]}")
+    info = {"width": w, "height": h, "dtype": dtype, "unit": unit, "bytes": nbytes}
+    intr = raw.get("intrinsics")
+    if isinstance(intr, dict):
+        kept = {str(k)[:16]: v for k, v in list(intr.items())[:12] if _finite(v)}
+        if kept:
+            info["intrinsics"] = kept
+    return info
+
+
+def clean_meta(raw, config, n_images=1, frame=False):
+    """Validate the phone's ``meta`` part against the session config.
+
+    Returns ``(labels, note, sensors, device, client_t)`` or raises ApiError.
+    ``frame=True`` (a streamed frame) skips ``require_label``: that rule is about
+    a deliberate submission, not about every frame of a stream.
+    """
+    meta = raw if isinstance(raw, dict) else load_meta(raw)
 
     labels = meta.get("labels", [])
     if not isinstance(labels, list) or len(labels) > MAX_LABELS:
@@ -118,7 +172,7 @@ def clean_meta(raw, config, n_images=1):
         stray = [x for x in cleaned if x not in allowed]
         if stray:
             raise ApiError(400, f"label not offered by this session: {stray[0]!r}")
-    if config.get("require_label") and not cleaned:
+    if config.get("require_label") and not cleaned and not frame:
         raise ApiError(400, "this session requires at least one label")
 
     note = meta.get("note", "")
@@ -185,6 +239,7 @@ def make_app(store, settings, clock=time.time):
     """The aiohttp application (mounted under BASE_PATH when one is set)."""
     fail_window = Window(settings.auth_fail_limit, 300)
     submit_window = Window(settings.rate_per_min, 60)
+    frame_window = Window(settings.frame_rate_per_s, 1)
     index_bytes = None
 
     def load_index():
@@ -275,6 +330,7 @@ def make_app(store, settings, clock=time.time):
             "config_version": sess.config_version,
             "limits": {"max_submit_bytes": settings.max_submit_bytes,
                        "max_images": settings.max_images,
+                       "max_frame_bytes": settings.max_frame_bytes,
                        "max_wait_s": settings.max_wait_s},
             "server_time": clock()})
 
@@ -335,6 +391,66 @@ def make_app(store, settings, clock=time.time):
         return web.json_response({"ok": True, "seq": seq, "bytes": total,
                                   "images": len(images)})
 
+    async def frame(request):
+        sess, ip = authorize(request)
+        if not frame_window.hit(ip, clock()):
+            raise ApiError(429, "too many frames; lower the stream rate", {"Retry-After": "1"})
+        if not (request.content_type or "").startswith("multipart/"):
+            raise ApiError(415, "send multipart/form-data")
+        cap = settings.max_frame_bytes
+        if request.content_length and request.content_length > cap + 64 * 1024:
+            raise ApiError(413, f"frame over {cap // MB} MB")
+        image = depth = None
+        mime, raw_meta, total = None, b"", 0
+        reader = await request.multipart()
+        while True:
+            part = await reader.next()
+            if part is None:
+                break
+            if part.name in ("image", "depth"):
+                if (image if part.name == "image" else depth) is not None:
+                    raise ApiError(400, f"one {part.name} per frame")
+                buf = bytearray()
+                while True:
+                    chunk = await part.read_chunk(65536)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    total += len(chunk)
+                    if total > cap:
+                        raise ApiError(413, f"frame over {cap // MB} MB")
+                if part.name == "image":
+                    mime = sniff_image(buf)
+                    if mime is None:
+                        raise ApiError(415, "images must be JPEG, PNG or WebP")
+                    image = bytes(buf)
+                else:
+                    depth = bytes(buf)
+            elif part.name == "meta":
+                while True:
+                    chunk = await part.read_chunk(4096)
+                    if not chunk:
+                        break
+                    raw_meta += chunk
+                    if len(raw_meta) > MAX_META_BYTES:
+                        raise ApiError(413, "meta too large")
+            else:
+                raise ApiError(400, f"unexpected part {part.name!r}")
+        if image is None:
+            raise ApiError(400, "no image in the frame")
+        meta = load_meta(raw_meta)
+        labels, note, sensors, device, client_t = clean_meta(
+            meta, dict(sess.config), 1, frame=True)
+        depth_info = clean_depth(meta.get("depth"), len(depth)) if depth else None
+        try:
+            n = store.add_frame(sess, image, mime, labels, note, sensors, device,
+                                client_t, size=clean_size(meta.get("size")),
+                                depth=depth, depth_info=depth_info)
+        except StoreError as e:
+            raise ApiError(413 if "large" in str(e) else 409, str(e))
+        store.touch_device(sess, device["id"], device["name"])
+        return web.json_response({"ok": True, "n": n, "bytes": total})
+
     async def feed(request):
         sess, _ = authorize(request)
         q = request.query
@@ -353,7 +469,7 @@ def make_app(store, settings, clock=time.time):
                     or store.session(sess.id) is not sess
                     or sess.config_version != known):
                 break
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.1)
         if store.session(sess.id) is not sess:
             raise ApiError(401, "session ended")
         age = store.program_age(sess)
@@ -377,13 +493,14 @@ def make_app(store, settings, clock=time.time):
             return web.Response(body=card.glb, content_type="model/gltf-binary")
         raise ApiError(404, "card has no " + kind)
 
-    body_cap = settings.max_submit_bytes + 256 * 1024
+    body_cap = max(settings.max_submit_bytes, settings.max_frame_bytes) + 256 * 1024
     app = web.Application(client_max_size=body_cap)
     app.router.add_get("/", index)
     app.router.add_get("/assets/{name:.+}", asset)
     app.router.add_get("/healthz", healthz)
     app.router.add_get("/api/config", config)
     app.router.add_post("/api/submit", submit)
+    app.router.add_post("/api/frame", frame)
     app.router.add_get("/api/feed", feed)
     app.router.add_get("/api/media/{id}/{kind}", media)
 

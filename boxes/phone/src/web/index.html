@@ -33,10 +33,20 @@
       <div class="controls">
         <button id="flip" class="round" type="button" aria-label="Switch camera" hidden>&#8635;</button>
         <button id="shutter" class="shutter" type="button" aria-label="Take photo" hidden></button>
+        <button id="stream" class="btn streambtn" type="button" aria-pressed="false" hidden>Stream</button>
         <label id="pick" class="btn" for="file">Camera app</label>
         <input id="file" class="sr-only" type="file" accept="image/*" capture="environment" multiple>
       </div>
     </div>
+
+    <section id="live" class="live" aria-label="Live result from the program">
+      <div id="liveImgBox" class="liveimg" hidden><img id="liveImg" alt="Live result image"></div>
+      <div class="livebody">
+        <div class="livehead"><span id="liveRef">Live result</span><time id="liveTime"></time></div>
+        <h3 id="liveTitle" hidden></h3>
+        <pre id="liveText" class="muted">Waiting for the program&hellip;</pre>
+      </div>
+    </section>
 
     <div id="shots" class="shots" aria-label="Captured photos"></div>
 
@@ -48,7 +58,7 @@
     </form>
 
     <textarea id="note" rows="2" maxlength="2000" placeholder="Note (optional)" aria-label="Note" hidden></textarea>
-    <button id="sensorBtn" type="button" hidden>Enable location &amp; orientation</button>
+    <button id="sensorBtn" type="button" hidden>Enable sensors</button>
 
     <div class="sendrow">
       <button id="send" class="primary" type="button" disabled>Send</button>

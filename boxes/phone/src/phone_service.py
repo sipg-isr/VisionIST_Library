@@ -22,7 +22,9 @@ The shared-envelope rules, as every box follows them:
 * ``session_id`` sits at the TOP of the section (like yolo and tapnext),
   default ``"default"``. One session = one pairing of a program with phones.
 
-Commands: ``setup`` · ``get`` (the default) · ``show`` · ``status`` · ``reset``.
+Commands: ``setup`` · ``get`` (the default) · ``latest`` · ``show`` · ``status`` ·
+``reset``. ``latest`` is the real-time read: the newest frame (streamed from the
+page's *stream* button) or photo, with its sensors, labels and optional depth.
 See README.md for the request and reply shapes.
 """
 
@@ -53,8 +55,8 @@ _PORT_ENV_VAR = "PORT"
 #: this file must be named <key>_service.py - the Dockerfile resolves it.
 BOX_KEY = "phone"
 
-COMMANDS = ("setup", "get", "show", "status", "reset")
-SENSOR_GROUPS = ("location", "orientation", "motion")
+COMMANDS = ("setup", "get", "latest", "show", "status", "reset")
+SENSOR_GROUPS = ("location", "orientation", "motion", "lidar")
 _SESSION_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 _URL_RE = re.compile(r"^https?://[^\s#?]+$")
 _LOCAL_HOSTS = ("localhost", "127.0.0.1", "[::1]")
@@ -74,6 +76,9 @@ _CONFIG_DEFAULTS = {
     "note": True,
     "custom_labels": False,
     "require_label": False,
+    "stream_fps": 5,
+    "stream_max_side": 640,
+    "stream_quality": 0.7,
 }
 
 
@@ -190,6 +195,9 @@ def normalize_config(params, settings):
         "note": _p_bool(params, "note", True),
         "custom_labels": _p_bool(params, "custom_labels", False),
         "require_label": _p_bool(params, "require_label", False),
+        "stream_fps": _p_float(params, "stream_fps", 5.0, 0.2, 30.0),
+        "stream_max_side": _p_int(params, "stream_max_side", 640, 0, 8192),
+        "stream_quality": _p_float(params, "stream_quality", 0.7, 0.3, 1.0),
     }
 
 
@@ -325,6 +333,35 @@ class PipelineService(folder_wd_pb2_grpc.PipelineServiceServicer):
         if images:
             data["images"] = wrap_value(images)
         return _done(extra, data=data, encoding={"images": "identity", "meta": "json"})
+
+    # ------------------------------------------------------------ latest
+    def _cmd_latest(self, sid, params, request, context):
+        """The newest frame or photo, for real-time use. Never destructive.
+
+        ``after`` is the ``n`` of the last reply you handled: nothing newer ->
+        ``count: 0`` at once (or after ``wait_s``), so a loop never processes the
+        same frame twice. ``include_images: false`` returns the sensors and labels only.
+        """
+        sess = self._need_session(sid)
+        after = _p_int(params, "after", 0, 0, 2 ** 53)
+        wait_s = _p_float(params, "wait_s", 0.0, 0.0, float(self.settings.max_wait_s))
+        want_images = _p_bool(params, "include_images", True)
+        cur, info = self.store.fetch_latest(
+            sess, after=after, wait_s=wait_s, should_stop=lambda: not context.is_active())
+        extra = {"action": "latest", "session_id": sess.id,
+                 "count": 1 if cur is not None else 0, **info}
+        if cur is None:
+            return _done(extra)
+        meta = cur.meta(self.store.now())
+        data = {"meta": wrap_value(json.dumps(meta).encode())}
+        encoding = {"meta": "json"}
+        if want_images:
+            data["images"] = wrap_value(list(cur.images))
+            encoding["images"] = "identity"
+            if cur.depth is not None:
+                data["depth"] = wrap_value(cur.depth)
+                encoding["depth"] = "identity"
+        return _done(extra, data=data, encoding=encoding)
 
     # -------------------------------------------------------------- show
     def _cmd_show(self, sid, params, request, context):

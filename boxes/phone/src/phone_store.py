@@ -23,6 +23,10 @@ import time
 from phone_settings import MB
 
 
+#: A stream counts as running while a frame arrived this recently (seconds).
+STREAM_ALIVE_S = 3.0
+
+
 class StoreError(ValueError):
     """A request the store refuses (too large, too many sessions...)."""
 
@@ -65,6 +69,39 @@ class Submission:
                 "bytes": self.nbytes}
 
 
+class Latest:
+    """The newest thing the phone sent, whatever it was: a streamed frame or a
+    submitted photo. One slot per session, overwritten, never queued - this is
+    what ``latest`` reads, so a stream can run at any rate without filling the box.
+
+    ``n`` counts every update (frames and photos together) and only increases;
+    ``seq`` is the submission number when the source is a photo, else None.
+    ``nbytes`` counts only bytes this slot owns: a photo's bytes are already
+    accounted in the queue.
+    """
+    __slots__ = ("n", "t", "source", "seq", "images", "mimes", "labels", "note",
+                 "sensors", "device", "client_t", "size", "depth", "depth_info",
+                 "nbytes")
+
+    def __init__(self, n, t, source, seq, images, mimes, labels, note, sensors,
+                 device, client_t, size=None, depth=None, depth_info=None, owned=True):
+        self.n, self.t, self.source, self.seq = n, t, source, seq
+        self.images, self.mimes = images, mimes
+        self.labels, self.note, self.sensors = labels, note, sensors
+        self.device, self.client_t, self.size = device, client_t, size
+        self.depth, self.depth_info = depth, depth_info
+        self.nbytes = (sum(len(i) for i in images) if owned else 0) + len(depth or b"")
+
+    def meta(self, now):
+        return {"n": self.n, "t": self.t, "age_s": round(max(0.0, now - self.t), 3),
+                "source": self.source, "seq": self.seq, "client_t": self.client_t,
+                "device": self.device, "labels": self.labels, "note": self.note,
+                "sensors": self.sensors, "size": self.size,
+                "n_images": len(self.images), "mime": self.mimes,
+                "bytes": sum(len(i) for i in self.images),
+                "depth": self.depth_info}
+
+
 class Card:
     __slots__ = ("id", "t", "title", "text", "ref_seq", "image", "image_mime",
                  "glb", "nbytes")
@@ -92,6 +129,9 @@ class Session:
         self.evicted = collections.deque(maxlen=10000)   # seqs dropped unread
         self.cards = collections.deque()
         self.next_card = 1
+        self.latest = None                        # Latest | None
+        self.next_n = 1
+        self.last_frame_t = None                  # when a streamed frame last arrived
         self.devices = {}                         # id -> {name, last_seen}
         self.last_get = None                      # when the program last polled
         self.last_phone = None                    # when a phone last did anything
@@ -109,6 +149,9 @@ class Store:
         self._sessions = {}
         self._by_token = {}
         self._bytes = 0
+
+    def now(self):
+        return self._clock()
 
     # --------------------------------------------------------- sessions
     def setup(self, sid, config, rotate=False):
@@ -163,6 +206,7 @@ class Store:
                 self._by_token.pop(_hash(sess.token), None)
                 self._bytes -= sum(x.nbytes for x in sess.queue)
                 self._bytes -= sum(c.nbytes for c in sess.cards)
+                self._bytes -= sess.latest.nbytes if sess.latest else 0
                 n += 1
             self._cond.notify_all()
             return n
@@ -190,9 +234,53 @@ class Store:
             sess.next_seq += 1
             sess.queue.append(sub)
             self._bytes += sub.nbytes
+            self._set_latest(sess, Latest(
+                sess.next_n, sub.t, "photo", sub.seq, images, mimes, labels, note,
+                sensors, device, client_t, owned=False))
             self._enforce_limits(sess)
             self._cond.notify_all()
             return sub.seq
+
+    # ----------------------------------------------------------- latest
+    def add_frame(self, sess, image, mime, labels, note, sensors, device, client_t,
+                  size=None, depth=None, depth_info=None):
+        """A streamed frame replaces the session's latest slot. Returns ``n``."""
+        if len(image) + len(depth or b"") > self.s.max_frame_bytes:
+            raise StoreError("frame too large")
+        with self._cond:
+            if self._sessions.get(sess.id) is not sess:
+                raise StoreError("session no longer exists")
+            now = self._clock()
+            sess.last_frame_t = now
+            n = self._set_latest(sess, Latest(
+                sess.next_n, now, "stream", None, [image], [mime], labels, note,
+                sensors, device, client_t, size, depth, depth_info))
+            self._enforce_limits(sess)
+            self._cond.notify_all()
+            return n
+
+    def fetch_latest(self, sess, after=0, wait_s=0.0, should_stop=None):
+        """The newest Latest with ``n`` > ``after``, or None. ``wait_s`` > 0 blocks
+        until one arrives. Returns ``(latest | None, info)``; ``info`` always says
+        what the newest ``n`` is and whether frames are arriving right now."""
+        deadline = self._clock() + max(0.0, wait_s)
+        with self._cond:
+            while True:
+                if self._sessions.get(sess.id) is not sess:
+                    raise StoreError("session was reset")
+                cur = sess.latest
+                fresh = cur is not None and cur.n > after
+                remaining = deadline - self._clock()
+                if fresh or remaining <= 0 or (should_stop and should_stop()):
+                    break
+                self._cond.wait(timeout=min(remaining, 0.5))
+            sess.last_get = self._clock()
+            now = self._clock()
+            info = {"n": cur.n if cur else 0,
+                    "streaming": sess.last_frame_t is not None
+                    and now - sess.last_frame_t <= STREAM_ALIVE_S,
+                    "has_latest": cur is not None}
+            return (cur if fresh else None), info
 
     def fetch(self, sess, after=0, max_items=8, max_bytes=32 * MB, latest=False,
               pop=False, wait_s=0.0, should_stop=None):
@@ -235,6 +323,14 @@ class Store:
                     "next_after": chosen[-1].seq if chosen else after}
             return chosen, info
 
+    def _set_latest(self, sess, new):
+        if sess.latest is not None:
+            self._bytes -= sess.latest.nbytes
+        sess.latest = new
+        sess.next_n += 1
+        self._bytes += new.nbytes
+        return new.n
+
     # ------------------------------------------------------------ cards
     def add_card(self, sess, title, text, ref_seq, image, image_mime, glb, replace=False):
         with self._cond:
@@ -276,6 +372,11 @@ class Store:
                           "oldest_seq": q[0].seq if q else None,
                           "newest_seq": q[-1].seq if q else None},
                 "next_seq": sess.next_seq,
+                "latest": None if sess.latest is None else {
+                    "n": sess.latest.n, "source": sess.latest.source,
+                    "age_s": round(max(0.0, now - sess.latest.t), 1)},
+                "streaming": sess.last_frame_t is not None
+                and now - sess.last_frame_t <= STREAM_ALIVE_S,
                 "evicted": len(sess.evicted),
                 "cards": len(sess.cards),
                 "devices": [{"id": k, "name": v["name"],
@@ -302,6 +403,10 @@ class Store:
             for sess in self._sessions.values():
                 while sess.queue and sess.queue[0].t < cutoff:
                     self._evict_one(sess)
+                    n += 1
+                if sess.latest is not None and sess.latest.t < cutoff:
+                    self._bytes -= sess.latest.nbytes
+                    sess.latest = None
                     n += 1
                 while sess.cards and sess.cards[0].t < cutoff:
                     self._bytes -= sess.cards.popleft().nbytes

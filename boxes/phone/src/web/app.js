@@ -24,6 +24,7 @@
     token: null, cfg: null, cv: 0, limits: {}, facing: 'environment',
     stream: null, shots: [], labels: new Set(), feedAfter: 0, sending: false,
     sensorsOn: false, latest: {}, cards: new Map(), ended: false, gen: 0,
+    streaming: false, streamGen: 0, sent: 0, liveSeq: 0, liveUrl: null,
   };
 
   // ---- identity of this phone (a random id kept in the browser) ----------
@@ -72,6 +73,7 @@
   function showPairing(message) {
     $('capture').hidden = true; $('results').hidden = true; $('pair').hidden = false;
     if (message) pill(message, 'bad');
+    setStream(false);
     stopCamera();
   }
 
@@ -134,9 +136,11 @@
   }
 
   function noCamera(why) {
+    setStream(false);
     stopCamera();
     $('nocamText').textContent = why;
     $('nocam').hidden = false; $('shutter').hidden = true; $('flip').hidden = true;
+    $('stream').hidden = true;                       // a stream needs the live camera
   }
 
   async function startCamera() {
@@ -153,7 +157,7 @@
       const v = $('cam');
       v.srcObject = S.stream;
       await v.play().catch(() => {});
-      $('nocam').hidden = true; $('shutter').hidden = false;
+      $('nocam').hidden = true; $('shutter').hidden = false; $('stream').hidden = false;
       const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
       $('flip').hidden = devices.filter((d) => d.kind === 'videoinput').length < 2;
       if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {});
@@ -175,13 +179,16 @@
   // ---- capture ------------------------------------------------------------
   const shotLimit = () => (S.cfg && S.cfg.mode === 'burst' ? S.cfg.burst_max : 1);
 
-  async function toJpeg(source, w, h) {
-    const side = S.cfg.max_side;
+  const scaled = (w, h, side) => {
     const k = side > 0 ? Math.min(1, side / Math.max(w, h)) : 1;
+    return [Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k))];
+  };
+
+  async function toJpeg(source, w, h, side = S.cfg.max_side, quality = S.cfg.jpeg_quality) {
     const c = el('canvas');
-    c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+    [c.width, c.height] = scaled(w, h, side);
     c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
-    return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('could not encode the photo'))), 'image/jpeg', S.cfg.jpeg_quality));
+    return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('could not encode the photo'))), 'image/jpeg', quality));
   }
 
   function addShot(blob) {
@@ -260,6 +267,14 @@
         if ([a.x, a.y, a.z, r.alpha, r.beta, r.gamma].every((v) => num(v) === undefined)) return;
         S.latest.motion = pack({ ax: a.x, ay: a.y, az: a.z, rx: r.alpha, ry: r.beta, rz: r.gamma, t: Date.now() / 1000 });
       });
+      if (want.includes('lidar')) {
+        // A web page cannot read LiDAR: iOS Safari has no WebXR and ARKit depth is native-only.
+        // Say so in the data (available: 0) instead of leaving the program to guess; a native
+        // client posts real depth to /api/frame (see README).
+        let webxr = false;
+        try { webxr = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar')); } catch (e) { /* none */ }
+        S.latest.lidar = { available: 0, webxr: webxr ? 1 : 0 };
+      }
       if (want.includes('location')) {
         if (!navigator.geolocation) throw new Error('no location on this browser');
         navigator.geolocation.watchPosition((p) => {
@@ -267,7 +282,8 @@
           S.latest.location = pack({ lat: c.latitude, lon: c.longitude, alt: c.altitude, acc: c.accuracy, alt_acc: c.altitudeAccuracy, heading: c.heading, speed: c.speed, t: p.timestamp / 1000 });
         }, (err) => say('Location: ' + err.message, 'bad'), { enableHighAccuracy: true, maximumAge: 5000 });
       }
-      S.sensorsOn = true; $('sensorBtn').hidden = true; say('Sensors on: each photo carries them.', 'ok');
+      S.sensorsOn = true; $('sensorBtn').hidden = true;
+      say(want.includes('lidar') ? 'Sensors on. LiDAR cannot be read from a web page on this device.' : 'Sensors on: each photo carries them.', 'ok');
     } catch (err) { say(err.message, 'bad'); }
   });
 
@@ -297,6 +313,53 @@
       if (err instanceof AuthError) endSession(err.message); else say(err.message, 'bad');
     } finally { S.sending = false; updateSend(); }
   });
+
+  // ---- stream -------------------------------------------------------------
+  // Frames go out one at a time (the next is captured only after the box has the
+  // previous one), so a slow link lowers the rate instead of queueing frames.
+  async function streamLoop(gen) {
+    const alive = () => S.streaming && gen === S.streamGen && !S.ended;
+    let failures = 0, shown = 0;
+    while (alive()) {
+      const t0 = performance.now();
+      try {
+        const v = $('cam');
+        if (v.videoWidth && v.readyState >= 2 && document.visibilityState === 'visible') {
+          const [w, h] = scaled(v.videoWidth, v.videoHeight, S.cfg.stream_max_side);
+          const blob = await toJpeg(v, v.videoWidth, v.videoHeight, S.cfg.stream_max_side, S.cfg.stream_quality);
+          if (!alive()) return;
+          const fd = new FormData();
+          fd.append('image', blob, 'frame.jpg');
+          fd.append('meta', JSON.stringify({
+            labels: Array.from(S.labels), note: S.cfg.note ? $('note').value : '',
+            sensors: [snapshot()], size: [w, h],
+            device: { id: deviceId, name: deviceName }, client_t: Date.now() / 1000,
+          }));
+          await api('frame', { method: 'POST', body: fd });
+          failures = 0; S.sent += 1;
+          if (performance.now() - shown > 1000) { shown = performance.now(); say('Streaming: ' + S.sent + ' frames sent.', 'ok'); }
+        }
+      } catch (err) {
+        if (!alive()) return;
+        if (err instanceof AuthError) { endSession(err.message); return; }
+        failures += 1; say('Stream: ' + err.message, 'bad');
+        await sleep(Math.min(5000, 500 * failures));
+      }
+      const wait = 1000 / (S.cfg.stream_fps || 5) - (performance.now() - t0);
+      if (wait > 0) await sleep(wait);
+    }
+  }
+
+  function setStream(on) {
+    on = !!on && !!S.stream && !S.ended;
+    if (on === S.streaming) return;
+    S.streaming = on;
+    const gen = ++S.streamGen;                     // a stopped loop notices and exits
+    $('stream').setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (on) { S.sent = 0; say('Streaming\u2026', 'ok'); streamLoop(gen); } else say('Stream stopped.');
+  }
+
+  $('stream').addEventListener('click', () => setStream(!S.streaming));
 
   // ---- results ------------------------------------------------------------
   async function mediaUrl(id, kind) {
@@ -337,7 +400,37 @@
     }
   }
 
+  // The live panel: ONE fixed place that always shows the newest result, replaced
+  // whole (text, title and image together) so a stream of results never moves the page.
+  function clearLive() {
+    S.liveSeq += 1;
+    if (S.liveUrl) URL.revokeObjectURL(S.liveUrl);
+    S.liveUrl = null;
+    $('liveImg').removeAttribute('src'); $('liveImgBox').hidden = true;
+    $('liveRef').textContent = 'Live result'; $('liveTime').textContent = '';
+    $('liveTitle').hidden = true;
+    $('liveText').textContent = 'Waiting for the program\u2026';
+  }
+
+  async function showLive(c) {
+    const id = ++S.liveSeq;                        // a newer result retires an older, slower one
+    let url = null;
+    if (c.image) { try { url = await mediaUrl(c.id, 'image'); } catch (e) { url = null; } }
+    if (id !== S.liveSeq) { if (url) URL.revokeObjectURL(url); return; }
+    $('liveRef').textContent = c.ref_seq ? 'Re #' + c.ref_seq : 'Live result';
+    $('liveTime').textContent = new Date(c.t * 1000).toLocaleTimeString();
+    const h = $('liveTitle'); h.textContent = c.title || ''; h.hidden = !c.title;
+    $('liveText').textContent = c.text || (c.glb && !url ? '3D model: open it under Results.' : '');
+    const old = S.liveUrl;
+    if (url) $('liveImg').src = url; else $('liveImg').removeAttribute('src');
+    $('liveImgBox').hidden = !url;
+    S.liveUrl = url;
+    if (old) URL.revokeObjectURL(old);
+  }
+
   function addCards(cards) {
+    showLive(cards[cards.length - 1]);
+    if (S.streaming) { $('empty').hidden = true; return; }   // while streaming only the live panel updates
     for (const c of cards) {
       if (S.cards.has(c.id)) continue;
       const r = renderCard(c);
@@ -360,6 +453,7 @@
 
   function endSession(message) {
     S.ended = true;
+    setStream(false);
     stopCamera();
     store.set('sessionStorage', 'phone_token', '');
     showPairing(null);
@@ -391,6 +485,7 @@
     for (const s of S.shots) URL.revokeObjectURL(s.url);
     for (const r of S.cards.values()) { r.node.remove(); for (const u of r.urls) URL.revokeObjectURL(u); }
     S.shots = []; S.cards.clear(); S.labels.clear(); S.feedAfter = 0; S.cfg = null;
+    clearLive();
     renderShots(); $('empty').hidden = false; $('note').value = ''; say('');
   }
 

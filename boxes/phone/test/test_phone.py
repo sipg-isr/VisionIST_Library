@@ -12,6 +12,7 @@ Layers:
   1. the gRPC contract    setup / get / show / status / reset, every bad input
   2. the web contract     pairing, upload validation, limits, the feed, media
   3. the store            eviction and `dropped`, TTL, sessions, isolation
+  5. streaming            frames in, `latest` out, depth/LiDAR part, limits
   4. deployment modes     behind a proxy (BASE_PATH, TRUST_PROXY, ALLOWED_HOSTS),
                           direct TLS (self-signed), security headers
 """
@@ -148,6 +149,21 @@ class Rig:
         body, ctype = multipart(parts)
         h = {"Content-Type": ctype, **(headers or {})}
         status, hdr, raw = self.http("POST", "/api/submit", token, h, body)
+        try:
+            return status, json.loads(raw.decode())
+        except ValueError:
+            return status, raw
+
+
+    def frame(self, token, image, meta=None, depth=None, headers=None):
+        parts = [("image", "f.jpg", "image/jpeg", image)]
+        if depth is not None:
+            parts.append(("depth", "d.bin", "application/octet-stream", depth))
+        if meta is not None:
+            parts.append(("meta", None, "application/json", json.dumps(meta).encode()))
+        body, ctype = multipart(parts)
+        status, hdr, raw = self.http("POST", "/api/frame", token,
+                                     {"Content-Type": ctype, **(headers or {})}, body)
         try:
             return status, json.loads(raw.decode())
         except ValueError:
@@ -826,10 +842,163 @@ def test_over_grpc():
         rig.close()
 
 
+# ============================================================== 8. streaming
+def test_stream():
+    print("\n-- streaming: frames in, `latest` out, depth/LiDAR")
+    import struct
+    rig = Rig()
+    try:
+        cfg, _ = setup(rig, labels=["a", "b"], require_label=True,
+                       sensors=["orientation", "lidar"])
+        tok = cfg["token"]
+        c = cfg["config"]
+        check("setup: stream defaults (5 fps, 640 px, q 0.7)",
+              c["stream_fps"] == 5.0 and c["stream_max_side"] == 640 and c["stream_quality"] == 0.7)
+        check("setup: lidar is an accepted sensor group", c["sensors"] == ["orientation", "lidar"])
+        for bad in ({"stream_fps": 0}, {"stream_fps": 99}, {"stream_quality": 2}, {"stream_max_side": -1}):
+            r, _ = rig.call("setup", bad)
+            check(f"setup: refuses {bad}", r["status"] == "error")
+        setup(rig, labels=["a", "b"], require_label=True, sensors=["orientation", "lidar"])
+
+        r, f = rig.call("latest")
+        check("latest: nothing yet -> count 0, has_latest false, not streaming",
+              r["status"] == "done" and r["count"] == 0 and r["has_latest"] is False
+              and r["streaming"] is False and r["n"] == 0 and not f)
+        st, _ = rig.frame(None, jpeg(1), {})
+        check("frame: no token -> 401", st == 401)
+        st, r = rig.frame(tok, NOT_AN_IMAGE, {})
+        check("frame: non-image -> 415", st == 415)
+
+        sens = [{"orientation": {"alpha": 1, "beta": 2, "gamma": 3},
+                 "lidar": {"available": 0, "webxr": 0},
+                 "motion": {"ax": 1}}]               # motion not enabled -> dropped
+        st, r = rig.frame(tok, jpeg(1), {"labels": ["a"], "note": "n1", "sensors": sens,
+                                         "size": [640, 480], "client_t": 5.5,
+                                         "device": {"id": "d1", "name": "iPad"}})
+        check("frame: accepted without a label problem (require_label is for photos)",
+              st == 200 and r["ok"] and r["n"] == 1, str(r))
+        r, f = rig.call("latest")
+        m = f["meta"]
+        check("latest: the frame, bytes exactly as sent",
+              r["count"] == 1 and r["n"] == 1 and f["images"] == [jpeg(1)])
+        check("latest: source, labels, note, device, size, client_t",
+              m["source"] == "stream" and m["seq"] is None and m["labels"] == ["a"]
+              and m["note"] == "n1" and m["device"] == {"id": "d1", "name": "iPad"}
+              and m["size"] == [640, 480] and m["client_t"] == 5.5 and m["n_images"] == 1)
+        check("latest: sensors carry the lidar group, disabled groups dropped",
+              m["sensors"] == [{"orientation": {"alpha": 1, "beta": 2, "gamma": 3},
+                                "lidar": {"available": 0, "webxr": 0}}], str(m["sensors"]))
+        check("latest: reports streaming, an age, and no depth", r["streaming"] is True
+              and 0 <= m["age_s"] < 5 and m["depth"] is None and "depth" not in f)
+        g, gf = rig.call("get")
+        check("frames never enter the get queue", g["count"] == 0 and gf["meta"] == [])
+
+        st, r = rig.frame(tok, jpeg(2), {"labels": ["b"]})
+        r, f = rig.call("latest")
+        check("a newer frame replaces the slot (n 2, only the newest returned)",
+              r["n"] == 2 and f["images"] == [jpeg(2)] and f["meta"]["labels"] == ["b"])
+        r, f = rig.call("latest", {"after": 2})
+        check("latest after=n -> count 0 (nothing new), no data",
+              r["count"] == 0 and r["n"] == 2 and not f)
+        r, f = rig.call("latest", {"after": 1})
+        check("latest after=n-1 -> the frame", r["count"] == 1)
+        r, f = rig.call("latest", {"include_images": False})
+        check("latest include_images=false -> meta only",
+              r["count"] == 1 and "images" not in f and f["meta"]["labels"] == ["b"])
+
+        # long poll
+        threading.Timer(0.3, lambda: rig.frame(tok, jpeg(3), {})).start()
+        t0 = time.time()
+        r, f = rig.call("latest", {"after": 2, "wait_s": 5})
+        check("latest wait_s returns as soon as a frame arrives",
+              r["count"] == 1 and f["images"] == [jpeg(3)] and time.time() - t0 < 3)
+        t0 = time.time()
+        r, f = rig.call("latest", {"after": 3, "wait_s": 0.4})
+        check("latest wait_s times out with count 0", r["count"] == 0 and 0.3 < time.time() - t0 < 3)
+
+        # a submitted photo is also "the last data"
+        st, sub = rig.submit(tok, [jpeg(9)], {"labels": ["a"], "sensors": [sens[0]]})
+        r, f = rig.call("latest")
+        check("a submitted photo becomes the latest (source photo, its seq)",
+              f["meta"]["source"] == "photo" and f["meta"]["seq"] == sub["seq"]
+              and f["images"] == [jpeg(9)] and r["n"] == 4)
+        g, gf = rig.call("get")
+        check("... and is still in the get queue", g["count"] == 1)
+
+        # depth / LiDAR
+        w, h = 4, 3
+        depth = struct.pack("<%df" % (w * h), *[0.5 + i / 10 for i in range(w * h)])
+        info = {"width": w, "height": h, "dtype": "float32", "unit": "m",
+                "intrinsics": {"fx": 500.0, "fy": 500.0, "cx": 2.0, "cy": 1.5, "junk": float("nan")}}
+        st, r = rig.frame(tok, jpeg(4), {"depth": info, "sensors": [{"lidar": {"available": 1, "min_m": 0.5}}]}, depth=depth)
+        check("frame with a depth part is accepted", st == 200, str(r))
+        r, f = rig.call("latest")
+        check("latest returns depth bytes untouched, codec identity",
+              f["depth"] == depth and r["encoding"]["depth"] == "identity")
+        check("latest meta.depth describes it (intrinsics cleaned)",
+              f["meta"]["depth"] == {"width": 4, "height": 3, "dtype": "float32", "unit": "m",
+                                     "bytes": 48, "intrinsics": {"fx": 500.0, "fy": 500.0, "cx": 2.0, "cy": 1.5}},
+              str(f["meta"]["depth"]))
+        check("a native client's lidar summary is kept in sensors",
+              f["meta"]["sensors"] == [{"lidar": {"available": 1, "min_m": 0.5}}])
+        u16 = struct.pack("<%dH" % (w * h), *range(w * h))
+        st, r = rig.frame(tok, jpeg(5), {"depth": {"width": w, "height": h, "dtype": "uint16", "unit": "mm"}}, depth=u16)
+        check("uint16 millimetre depth is accepted", st == 200)
+        st, r = rig.frame(tok, jpeg(5), {"depth": info}, depth=depth[:-4])
+        check("depth byte count must match width*height*dtype", st == 400 and "needs" in r["error"], str(r))
+        st, r = rig.frame(tok, jpeg(5), {"depth": {**info, "dtype": "float64"}}, depth=depth)
+        check("depth dtype must be float32 or uint16", st == 400)
+        st, r = rig.frame(tok, jpeg(5), {"depth": {**info, "unit": "km"}}, depth=depth)
+        check("depth unit must be m or mm", st == 400)
+        st, r = rig.frame(tok, jpeg(5), {}, depth=depth)
+        check("a depth part without meta.depth is refused", st == 400)
+        r, f = rig.call("latest")
+        check("refused frames leave the latest slot alone", r["n"] == 6, str(r["n"]))
+
+        # status, accounting, TTL, reset
+        s, _ = rig.call("status")
+        check("status shows the latest slot and streaming",
+              s["latest"]["source"] == "stream" and s["streaming"] is True)
+        sess = rig.store.session("default")
+        for i in range(50):
+            rig.frame(tok, jpeg(i), {})
+        held = rig.store._bytes
+        check("50 more frames hold one frame, not 50 (store bytes bounded)",
+              held < 40 * 1024 + sum(x.nbytes for x in sess.queue), str(held))
+        sess.last_frame_t -= 10
+        r, _ = rig.call("latest", {"after": 10 ** 6})
+        check("streaming turns false when frames stop", r["streaming"] is False)
+        sess.latest.t -= rig.settings.ttl_s + 5
+        rig.store.sweep()
+        r, _ = rig.call("latest")
+        check("TTL drops a stale latest slot", r["count"] == 0 and r["has_latest"] is False)
+        rig.frame(tok, jpeg(1), {})
+        rig.call("reset", session="default")
+        check("reset empties accounting", rig.store._bytes == 0, str(rig.store._bytes))
+    finally:
+        rig.close()
+
+    rig = Rig(max_frame_mb=1, frame_rate_per_s=3)
+    try:
+        cfg, _ = setup(rig)
+        tok = cfg["token"]
+        st, r = rig.frame(tok, jpeg(1, size=2 * MB), {})
+        check("frame over MAX_FRAME_MB -> 413", st == 413, str(st))
+        # the refused 413 above already used one of this second's 3 slots
+        codes = [rig.frame(tok, jpeg(i), {})[0] for i in range(6)]
+        check("frames beyond FRAME_RATE_PER_S in a second -> 429", codes.count(200) == 2 and codes[2:] == [429] * 4, str(codes))
+        r, _ = rig.call("latest")
+        check("rate-limited frames did not change the slot", r["n"] == 2)
+    finally:
+        rig.close()
+    check("MAX_FRAME_MB is capped to 80 % of the gRPC message limit",
+          Settings.from_env({"MAX_FRAME_MB": "64"}, message_cap=10 * MB).max_frame_bytes == int(8 * MB))
+
+
 def main():
     t0 = time.time()
     for fn in (test_grpc, test_roundtrip, test_upload_validation, test_security,
-               test_store, test_deployment, test_over_grpc):
+               test_store, test_deployment, test_over_grpc, test_stream):
         try:
             fn()
         except Exception as e:                              # noqa: BLE001
