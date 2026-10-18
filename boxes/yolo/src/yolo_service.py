@@ -72,6 +72,37 @@ _ONE_DAY_IN_SECONDS = 60 * 60 * 24
 _IDLE_TIMEOUT = 60  # seconds
 
 _DEFAULT_WEIGHTS = os.getenv("YOLO_WEIGHTS", "yolov8n.pt")  # runtime download
+
+#: command -> ultralytics task. `detect` is the default, so every call written
+#: before this box grew the other tasks behaves exactly as it did.
+_TASK_COMMANDS = ("detect", "pose", "segment", "obb", "classify")
+
+#: Tasks ultralytics can TRACK. classify cannot - asking raises
+#: "Task 'classify' doesn't support 'mode=track'" - so it goes through
+#: predict() and its records carry no track ids.
+_TRACKABLE_TASKS = frozenset({"detect", "pose", "segment", "obb"})
+
+#: Default checkpoint per task when the caller names no `weights`. detect
+#: keeps the historical default so nothing changes underneath existing
+#: callers; the rest default to the YOLO26 variants, which the pinned
+#: ultralytics (>= 8.4.0) knows how to fetch.
+_TASK_WEIGHTS = {
+    "detect": None,                                              # _DEFAULT_WEIGHTS
+    "pose": os.getenv("YOLO_POSE_WEIGHTS", "yolo26n-pose.pt"),
+    "segment": os.getenv("YOLO_SEG_WEIGHTS", "yolo26n-seg.pt"),
+    "obb": os.getenv("YOLO_OBB_WEIGHTS", "yolo26n-obb.pt"),
+    "classify": os.getenv("YOLO_CLS_WEIGHTS", "yolo26n-cls.pt"),
+}
+
+#: COCO-17 joint order - the layout every pretrained ultralytics pose model
+#: uses. Reported alongside the keypoints only when there are exactly 17, so a
+#: custom-trained model with a different skeleton is never mislabelled.
+_COCO17_KEYPOINTS = (
+    "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+    "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+    "left_wrist", "right_wrist", "left_hip", "right_hip",
+    "left_knee", "right_knee", "left_ankle", "right_ankle",
+)
 _DEFAULT_SESSION = "default"
 _SESSION_TTL = int(os.getenv("YOLO_SESSION_TTL", "1800") or 1800)  # 0 = keep forever
 _DEFAULTS = {
@@ -99,6 +130,14 @@ class _Session:
         self.created = time.time()
         self.last_used = self.created
         self.frames = 0
+
+
+def _np_to_bytes(arr) -> bytes:
+    """np.save keeps dtype and shape in the blob, so the client's `numpy`
+    codec restores the array exactly."""
+    buf = io.BytesIO()
+    np.save(buf, np.asarray(arr))
+    return buf.getvalue()
 
 
 def _error(message, extra=None):
@@ -320,7 +359,7 @@ class PipelineService(pipeline_pb2_grpc.PipelineServiceServicer):
                 except Exception:
                     logging.exception("tracker setup_predictor failed")
 
-    def _track_frames(self, frames, spec, sess, device):
+    def _infer_frames(self, frames, spec, sess, device):
         """One tracking pass over ``frames`` (in order; per-frame Results).
 
         Ultralytics forces batch=1 in track mode, so every frame is one
@@ -334,17 +373,22 @@ class PipelineService(pipeline_pb2_grpc.PipelineServiceServicer):
                 logging.info("DBG-ATTACH pct=%s sess=%s tracker=%s n_ses=%d",
                              id(predictor), sess, id(sess.tracker), len(self._sessions))
 
-            results = self._model.track(
-                frames,
-                persist=True,          # reuse the attached tracker, never re-create
-                conf=spec["conf"],
-                iou=spec["iou"],
-                imgsz=spec["imgsz"],
-                max_det=spec["max_det"],
-                classes=spec["classes"],
-                device=device,
-                verbose=False,
-            )
+            kwargs = dict(imgsz=spec["imgsz"], device=device, verbose=False)
+            if spec["nms"] is not None:
+                # YOLO26 trains both heads; nms=False picks the one-to-one
+                # (end-to-end) head at inference time.
+                kwargs["nms"] = spec["nms"]
+            if spec["task"] != "classify":
+                kwargs.update(conf=spec["conf"], iou=spec["iou"],
+                              max_det=spec["max_det"], classes=spec["classes"])
+
+            if spec["task"] in _TRACKABLE_TASKS:
+                results = self._model.track(frames, persist=True, **kwargs)
+            else:
+                # classify has no tracker: ultralytics raises outright for
+                # mode=track, so this path is predict() and its records
+                # carry no track ids.
+                results = self._model.predict(frames, **kwargs)
 
             # Adopt the tracker this call actually used: a fresh one for a
             # new session, or the surviving one if the model swapped a
@@ -407,6 +451,14 @@ class PipelineService(pipeline_pb2_grpc.PipelineServiceServicer):
                 parameters.get("save_annotated", _DEFAULTS["save_annotated"]), "save_annotated"),
             "frame_step": max(1, int(self._num(parameters, "frame_step", int))),
             "max_frames": max(1, int(self._num(parameters, "max_frames", int))),
+            # segment only: full per-instance binary masks as well as the
+            # polygons. Off by default - see _detect_frame for why.
+            "return_masks": self._boolish(
+                parameters.get("return_masks", False), "return_masks"),
+            # YOLO26's NMS-free one-to-one head. None = leave ultralytics to
+            # its default; False selects end-to-end inference.
+            "nms": (None if parameters.get("nms") is None
+                    else self._boolish(parameters.get("nms"), "nms")),
         }
 
     # ---------------------------------------------------------------- inputs
@@ -583,33 +635,127 @@ class PipelineService(pipeline_pb2_grpc.PipelineServiceServicer):
                 pass
 
     # -------------------------------------------------------------- inference
-    def _detect_frame(self, r, frame, frame_index):
-        """One frame's Result -> a plain-JSON detection record.
+    def _detect_frame(self, r, frame, frame_index, spec):
+        """One frame's Result -> a plain-JSON record.
 
-        The box always runs in track mode, so ``boxes`` carries ``.id``
-        (per-session tracker ids); a frame with zero boxes has an empty
-        box list and ``track_id: null``."""
-        xyxy = labels = class_ids = scores = track_ids = []
-        boxes = getattr(r, "boxes", None)
-        if boxes is not None and len(boxes):
-            names = self._model.names
-            xyxy = np.round(boxes.xyxy.cpu().numpy(), 2).tolist()
-            class_ids = boxes.cls.cpu().numpy().astype(int).tolist()
-            labels = [names[c] for c in class_ids]
-            scores = np.round(boxes.conf.cpu().numpy(), 4).tolist()
-            if getattr(boxes, "id", None) is not None:
-                track_ids = [int(t) for t in boxes.id.cpu().numpy().tolist()]
+        The shape is the same for every task; a task simply leaves the keys
+        it has nothing to say about at ``None``. ``detect`` produces exactly
+        what it always did, so older callers see no change.
+
+        What each task adds:
+
+        ``pose``      ``keypoints``, (N, 17, 3) as [x, y, confidence] in frame
+                      pixels, plus ``keypoint_names`` when the model uses the
+                      COCO-17 layout.
+        ``segment``   ``polygons``, one contour per instance in FRAME pixels.
+                      Deliberately not the raw ``masks.data``: that array is
+                      at the model's input resolution (640x480 for an
+                      810x1080 frame), so sending it raw would hand the
+                      caller coordinates that do not line up with the boxes.
+                      It is also ~900x larger - 1.5M values against 1.6k
+                      polygon points for five people. ``return_masks`` adds
+                      full binary masks, rasterised from the polygons at
+                      frame size so they do line up.
+        ``obb``       ``obb`` with ``xywhr`` (centre, size, radians) and the
+                      four ``corners``; boxes/labels/scores come from the
+                      oriented detections.
+        ``classify``  ``classification`` with the top-5, and no per-object
+                      entries at all.
+        """
         h, w = frame.shape[:2]
-        return {
+        rec = {
             "frame_index": frame_index,   # original index in the source (video frame nº / list pos)
             "width": int(w),
             "height": int(h),
-            "boxes": xyxy,                # [x1, y1, x2, y2] in input-frame pixels
-            "class_ids": class_ids,
-            "labels": labels,
-            "scores": scores,
-            "track_id": track_ids if track_ids else None,   # per-box session tracker id
+            "boxes": [],                  # [x1, y1, x2, y2] in input-frame pixels
+            "class_ids": [],
+            "labels": [],
+            "scores": [],
+            "track_id": None,             # per-box session tracker id
+            "keypoints": None,
+            "keypoint_names": None,
+            "polygons": None,
+            "obb": None,
+            "classification": None,
         }
+        names = self._model.names
+        task = spec["task"]
+
+        # ---- classification: one verdict for the whole frame --------------
+        if task == "classify":
+            probs = getattr(r, "probs", None)
+            if probs is not None:
+                top5 = [int(i) for i in probs.top5]
+                conf = [round(float(c), 4) for c in probs.top5conf]
+                rec["classification"] = {
+                    "top5": [{"class_id": c, "label": names[c], "score": sc}
+                             for c, sc in zip(top5, conf)],
+                    "top1": {"class_id": int(probs.top1),
+                             "label": names[int(probs.top1)],
+                             "score": round(float(probs.top1conf), 4)},
+                }
+            return rec
+
+        # ---- oriented boxes carry their own container ---------------------
+        if task == "obb":
+            obb = getattr(r, "obb", None)
+            if obb is not None and len(obb):
+                cls_ids = obb.cls.cpu().numpy().astype(int).tolist()
+                rec["class_ids"] = cls_ids
+                rec["labels"] = [names[c] for c in cls_ids]
+                rec["scores"] = np.round(obb.conf.cpu().numpy(), 4).tolist()
+                if getattr(obb, "id", None) is not None:
+                    rec["track_id"] = [int(t) for t in obb.id.cpu().numpy().tolist()]
+                rec["obb"] = {
+                    "xywhr": np.round(obb.xywhr.cpu().numpy(), 2).tolist(),
+                    "corners": np.round(obb.xyxyxyxy.cpu().numpy(), 2).tolist(),
+                }
+            return rec
+
+        # ---- detect / pose / segment all start from boxes -----------------
+        boxes = getattr(r, "boxes", None)
+        if boxes is not None and len(boxes):
+            rec["boxes"] = np.round(boxes.xyxy.cpu().numpy(), 2).tolist()
+            cls_ids = boxes.cls.cpu().numpy().astype(int).tolist()
+            rec["class_ids"] = cls_ids
+            rec["labels"] = [names[c] for c in cls_ids]
+            rec["scores"] = np.round(boxes.conf.cpu().numpy(), 4).tolist()
+            if getattr(boxes, "id", None) is not None:
+                rec["track_id"] = [int(t) for t in boxes.id.cpu().numpy().tolist()]
+
+        if task == "pose":
+            kp = getattr(r, "keypoints", None)
+            if kp is not None and len(kp):
+                data = kp.data.cpu().numpy()          # (N, K, 2 or 3)
+                rec["keypoints"] = np.round(data, 2).tolist()
+                if data.shape[1] == len(_COCO17_KEYPOINTS):
+                    rec["keypoint_names"] = list(_COCO17_KEYPOINTS)
+
+        if task == "segment":
+            masks = getattr(r, "masks", None)
+            if masks is not None and len(masks):
+                # masks.xy is already scaled to the original frame.
+                rec["polygons"] = [np.round(np.asarray(poly), 1).tolist()
+                                   for poly in masks.xy]
+        return rec
+
+    @staticmethod
+    def _rasterise_masks(record, frame_shape):
+        """Polygons -> one (N, H, W) uint8 mask stack at FRAME resolution.
+
+        Built from the polygons rather than from ``masks.data`` so the result
+        is in the same coordinate space as everything else in the record.
+        """
+        polys = record.get("polygons") or []
+        h, w = frame_shape[:2]
+        if not polys:
+            return np.zeros((0, h, w), np.uint8)
+        stack = np.zeros((len(polys), h, w), np.uint8)
+        for i, poly in enumerate(polys):
+            pts = np.asarray(poly, dtype=np.float32)
+            if pts.size:
+                cv2.fillPoly(stack[i], [np.round(pts).astype(np.int32)], 1)
+        return stack
 
     # ---------------------------------------------------------------- Process
     def Process(self, request, context):
@@ -658,10 +804,19 @@ class PipelineService(pipeline_pb2_grpc.PipelineServiceServicer):
                         {"yolo": {"status": "done", "action": "list",
                                   "sessions": listing}}))
 
+            # The command names the TASK. Anything not a task command and
+            # not reset/list is a typo worth saying so about.
+            command = str(yolo_config.get("command") or "detect").strip() or "detect"
+            if command not in _TASK_COMMANDS:
+                return _error(
+                    f"unknown command {command!r} (expected one of "
+                    f"{', '.join(_TASK_COMMANDS)}, or reset / list)")
+
             try:
                 spec = self._parse_parameters(parameters)
             except ValueError as e:
                 return _error(str(e))
+            spec["task"] = command
 
             image_bytes_list = unwrap_value(request.data["images"]) if "images" in request.data else None
             if image_bytes_list is not None and not isinstance(image_bytes_list, list):
@@ -681,12 +836,25 @@ class PipelineService(pipeline_pb2_grpc.PipelineServiceServicer):
             # next call (they outlive the model instance).  Fresh
             # checkpoints download on first use.
             weights = str(parameters.get("weights") or "").strip() \
+                or _TASK_WEIGHTS.get(command) \
                 or self._default_weights
             try:
                 self._activate_weights(weights)
             except Exception as e:
                 logging.exception("failed to load weights %r", weights)
                 return _error(f"failed to load weights {weights!r}: {e}")
+
+            # A checkpoint knows its own task. Catching the mismatch here
+            # turns a confusing empty reply - the model runs happily and the
+            # fields the caller wanted are simply absent - into a sentence
+            # that says which checkpoint to use.
+            model_task = getattr(self._model, "task", None)
+            if model_task and model_task != command:
+                return _error(
+                    f"command {command!r} needs a {command} checkpoint, but "
+                    f"{weights!r} is a {model_task} model. Pass "
+                    f"parameters.weights (e.g. {_TASK_WEIGHTS.get(command)!r}) "
+                    f"or use command {model_task!r}.")
 
             # GPU lifecycle: CPU at startup -> lazy move on request -> idle
             # watchdog fallback (see _place_model / _watchdog_loop).
@@ -715,15 +883,16 @@ class PipelineService(pipeline_pb2_grpc.PipelineServiceServicer):
             # advances the session's tracker over them, so VRAM stays bounded
             # per frame and ids stay stable across calls in this session.
             sess = self._get_session(sid)
-            results = self._track_frames(frames, spec, sess, device)
+            results = self._infer_frames(frames, spec, sess, device)
             if not isinstance(results, list) or len(results) != len(frames):
                 n = len(results) if isinstance(results, list) else type(results).__name__
                 return _error(f"tracking returned {n} results for "
                               f"{len(frames)} frames (internal error)")
 
-            detections = [self._detect_frame(results[i], frames[i], frame_indices[i])
+            detections = [self._detect_frame(results[i], frames[i],
+                                             frame_indices[i], spec)
                           for i in range(len(frames))]
-            num_detections = sum(len(d["boxes"]) for d in detections)
+            num_detections = sum(len(d["labels"]) for d in detections)
             num_tracks = len({t for d in detections for t in (d["track_id"] or [])})
             sess.frames += len(frames)
 
@@ -731,6 +900,16 @@ class PipelineService(pipeline_pb2_grpc.PipelineServiceServicer):
                 "detections": wrap_value(json.dumps(detections).encode("utf-8")),
             }
             encoding = {"detections": "json"}
+
+            if spec["task"] == "segment" and spec["return_masks"]:
+                # One (N, H, W) uint8 stack per frame, concatenated in frame
+                # order; `detections[i]["polygons"]` says how many belong to
+                # frame i. Large by nature - hence opt-in.
+                stacks = [self._rasterise_masks(detections[i], frames[i].shape)
+                          for i in range(len(frames))]
+                response_data["masks"] = wrap_value(
+                    [_np_to_bytes(stack) for stack in stacks])
+                encoding["masks"] = "numpy"
 
             if spec["save_annotated"]:
                 annotated_bgr, annotated = [], []

@@ -66,7 +66,7 @@ checkout: `--index` also takes the published
 | [`moge`](boxes/moge) | `moge` | cuda-only | 9067 | MoGe-3 monocular geometry: metric depth, point map, normals, intrinsics | `depth` `geometry` `monocular` |
 | [`open_clip`](boxes/open_clip) | `open_clip` | gpu-or-cpu | 9073 | OpenCLIP image and text embeddings from any open_clip model and pretrained tag, with cosine similarity and zero-shot probabilities | `clip` `embeddings` `multimodal` `zero-shot` |
 | [`opencv`](boxes/opencv) | `opencv` | gpu-or-cpu | 9065 | Classic feature extraction and matching: SIFT/ORB via FLANN, or SuperPoint/DISK via LightGlue, plus a RANSAC fundamental matrix | `classical` `features` `matching` |
-| [`phone`](boxes/phone) | `phone` | cpu | 9079 + web 9080 | A phone as a capture and annotation terminal: photos + labels in, results back, all polled over gRPC | `annotation` `camera` `phone` `web` |
+| [`phone`](boxes/phone) | `phone` | cpu | 9079 + web 9080 | A phone as a capture and annotation terminal: photos or a live camera stream + labels + sensors in, results back, all read over gRPC | `annotation` `camera` `lidar` `phone` `stream` `web` |
 | [`pycv`](boxes/pycv) | `pycv` | cpu | 9075 | Runs user-supplied Python against OpenCV - a script or a one-line expression in, named arrays out | `classical` `opencv` `scripting` |
 | [`sbert`](boxes/sbert) | `sbert` | gpu-or-cpu | 9062 | Sentence-BERT text embeddings and their pairwise similarity | `embeddings` `text` |
 | [`sfm`](boxes/sfm) | `sfm` | cpu | 9074 | SfM: camera poses + 3D points from feature tracks and monocular depth, with partial (missing) tracks | `depth` `geometry` `reconstruction` `sfm` |

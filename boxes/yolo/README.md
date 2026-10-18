@@ -1,9 +1,28 @@
-# YOLO Box (object detection **and tracking** on images and videos)
+# YOLO Box (detection, pose, segmentation, oriented boxes, classification — with tracking)
 
-A gRPC box that runs YOLO object detection (ultralytics) over **images and
-videos** — **always in tracking mode, so every detection also carries a
-stable per-session track id** — and returns per-frame detection records plus
-optionally annotated frames (annotated with id labels).
+A gRPC box that runs ultralytics YOLO over **images and videos** and returns
+per-frame records plus optionally annotated frames.
+
+**Five tasks, chosen with `command`:**
+
+| command | what you get back | tracked |
+|---|---|---|
+| `detect` (default) | boxes, labels, scores | yes |
+| `pose` | the above **plus 17 COCO keypoints per person** | yes |
+| `segment` | the above **plus one polygon per instance** | yes |
+| `obb` | oriented boxes: centre, size, angle, four corners | yes |
+| `classify` | one top-5 verdict for the whole frame | no — ultralytics refuses to track it |
+
+The command **is** the task, and a checkpoint knows its own: `pose` needs a
+`-pose` checkpoint, `segment` a `-seg` one. Ask for a task the active
+checkpoint cannot do and the box says which checkpoint to use, rather than
+running happily and returning none of the fields you wanted. Each task has
+its own default checkpoint (`yolo26n-<task>.pt`), so `command: "pose"` works
+with no `weights` at all; `detect` keeps its historical default so nothing
+changes underneath existing callers.
+
+For `detect`, `pose`, `segment` and `obb` the box is **always in tracking
+mode, so every detection also carries a stable per-session track id**.
 
 The box speaks the shared **envelope** interface, so it is addressable
 through `visionist_client` exactly like clip:
@@ -78,9 +97,10 @@ Up to two fields in `data` (send **either**, not both), and a small `config`:
 - `data["video"]` — a single video file (mp4/avi/webm/mov). The box decodes
   it server-side (OpenCV/ffmpeg), samples every `frame_step`-th frame, and
   stops at `max_frames` sampled frames.
-- `config["yolo"]["command"]` — `"detect"` (default; tracking is always on),
-  `"reset"` (clear this session's tracker state), or `"list"` (active
-  sessions — no `data` needed).
+- `config["yolo"]["command"]` — the task: `"detect"` (default), `"pose"`,
+  `"segment"`, `"obb"` or `"classify"`; plus `"reset"` (clear this session's
+  tracker state) and `"list"` (active sessions — no `data` needed).
+  Tracking is always on for the four detection-shaped tasks.
 - `config["yolo"]["session_id"]` — opaque session key (section top level,
   like tapnext). Omitted → the shared `"default"` session. Same session =
   stable track ids across calls; different sessions = independent sequences.
@@ -98,6 +118,8 @@ Up to two fields in `data` (send **either**, not both), and a small `config`:
 | `save_annotated`  | `true`  | also return the annotated frames as JPEGs                       |
 | `frame_step`      | `1`     | video only: sample every Nth frame                              |
 | `max_frames`      | `1024`  | safety cap on sampled frames per call                           |
+| `return_masks`    | `false` | `segment` only: also return full binary masks (see below)       |
+| `nms`             | auto    | `false` selects YOLO26's NMS-free one-to-one head (end-to-end)  |
 
 ### Response
 
@@ -163,6 +185,51 @@ coordinates (rounded to 2 decimals). `track_id` is aligned with `boxes`
 across frames *and* across calls — that's what makes a video's detections
 joinable into trajectories. A fresh session (or after `reset`) starts
 numbering from the base.
+
+## What each task adds to a record
+
+Every record has the same shape; a task leaves the keys it has nothing to say
+about at `null`. `detect` produces exactly what it always did.
+
+**`pose`** → `keypoints`, `(num_people, 17, 3)` as `[x, y, confidence]` in
+frame pixels, and `keypoint_names` — the COCO-17 order, reported only when
+the model really has 17 joints, so a custom skeleton is never mislabelled.
+The track id of person *i* is `track_id[i]`, so skeletons follow people
+across frames for free.
+
+**`segment`** → `polygons`, one contour per instance, in **frame pixels**.
+
+This is deliberately not ultralytics' raw `masks.data`. That array comes back
+at the *model's* input resolution — 640×480 for an 810×1080 frame — so
+sending it would hand you coordinates that do not line up with the boxes
+beside it. It is also about **900× larger**: for five people in one frame,
+1,536,000 mask values against 1,653 polygon points. Measured on a real frame,
+a whole segmentation reply is ~57 KB.
+
+If you do want dense masks, `return_masks: true` adds a `masks` field: one
+`(num_instances, H, W)` `uint8` stack per frame, **rasterised from the
+polygons at frame resolution**, so it lines up with everything else. Declared
+with the `numpy` codec. Mind your `MAX_MESSAGE_MB` — this is the one option
+here that can approach it.
+
+**`obb`** → `obb` with `xywhr` (centre, size, rotation in radians) and
+`corners`, the four `(x, y)` points. Note the shipped checkpoint is trained
+on DOTA aerial imagery and finds nothing in ordinary ground-level photos.
+
+**`classify`** → `classification` with `top1` and `top5`, each
+`{class_id, label, score}`. No per-object entries and no `track_id`:
+ultralytics raises outright for `mode=track` on a classifier.
+
+```python
+# tracked skeletons
+res = b.run(data={"video": pathlib.Path("clip.mp4")},
+            config={"yolo": {"command": "pose", "session_id": "alice",
+                             "parameters": {"frame_step": 5}}})
+rec = res.detections[0]
+kp  = rec["keypoints"]          # [person][joint][x, y, conf]
+who = rec["track_id"]           # same order as keypoints
+nose_of_first = kp[0][rec["keypoint_names"].index("nose")]
+```
 
 ## Call with visionist_client
 

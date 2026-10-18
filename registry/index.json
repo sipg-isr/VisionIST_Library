@@ -1140,17 +1140,20 @@
         }
       ],
       "version": "0.1.0",
-      "summary": "A phone as a capture and annotation terminal: photos + labels in, results back, all polled over gRPC",
+      "summary": "A phone as a capture and annotation terminal: photos or a live camera stream + labels + sensors in, results back, all read over gRPC",
       "runtime": "cpu",
       "status": "experimental",
       "tags": [
         "annotation",
         "camera",
+        "lidar",
         "phone",
+        "stream",
         "web"
       ],
       "commands": [
         "get",
+        "latest",
         "setup",
         "show",
         "status",
@@ -1206,14 +1209,20 @@
           {
             "field": "images",
             "codec": "identity",
-            "when": "get, at least one image",
+            "when": "get with at least one image; latest",
             "description": "JPEG/PNG/WebP bytes as the phone sent them, one entry per photo, submissions in order. `meta[i].first_image` and `.n_images` say which entries belong to submission i."
           },
           {
             "field": "meta",
             "codec": "json",
-            "when": "get",
-            "description": "A list, one object per submission returned: seq, t (box clock), client_t (phone clock), device {id, name}, labels [str], note, sensors (a list aligned with the images - each null or {location, orientation, motion} of numbers), n_images, first_image, mime, bytes. Empty list when nothing is new."
+            "when": "get, latest",
+            "description": "get: a list, one object per submission returned: seq, t (box clock), client_t (phone clock), device {id, name}, labels [str], note, sensors (a list aligned with the images - each null or {location, orientation, motion} of numbers), n_images, first_image, mime, bytes. Empty list when nothing is new. latest: ONE object (not a list) - n, source (stream|photo), seq (photo only), age_s, t, client_t, device, labels, note, sensors (a one-element list for a frame), size [w, h], n_images, mime, bytes, depth."
+          },
+          {
+            "field": "depth",
+            "codec": "identity",
+            "when": "latest, the frame came with a depth map",
+            "description": "Raw depth map, row-major little-endian, no header. `meta.depth` gives width, height, dtype (float32 or uint16), unit (m or mm), bytes and optional intrinsics."
           },
           {
             "field": "qr",
@@ -1230,6 +1239,8 @@
         "`seq` is per session and only increases. A consumer that remembers `next_after` never reads a submission twice and learns of any it missed.",
         "A live camera preview needs a secure context (https, or localhost). Over plain http to another host the page falls back to the phone's own camera app (an <input capture>), which works everywhere but has no preview inside the page.",
         "The gRPC port has no authentication, like every box. On a public host publish only the web port and keep 8061 on a private network.",
+        "Streaming: the page's Stream button POSTs frames to /api/frame, one at a time. Frames are NOT queued: they overwrite a single `latest` slot per session (a photo submission overwrites it too), so a stream never fills the box and `get` is unaffected. `latest` is read-only and does not consume anything; pass the previous `n` as `after` to avoid handling a frame twice. Rates are bounded by FRAME_RATE_PER_S per address and MAX_FRAME_MB per frame.",
+        "LiDAR: a web page cannot read it (iOS Safari has no WebXR; ARKit depth is native-only). With sensors including lidar the page reports sensors.lidar = {available: 0}. A native iPhone/iPad client can POST a depth map (a `depth` part + meta.depth) to /api/frame with the pairing token; `latest` then returns it as data.depth.",
         "Photos are stored and forwarded as received (JPEG/PNG/WebP); the box never decodes them, so a corrupt image is only found by whoever reads it.",
         "Deployment: set PUBLIC_URL, TRUST_PROXY, ALLOWED_HOSTS and (only if the proxy does not strip its prefix) BASE_PATH behind a reverse proxy; set TLS_CERT and TLS_KEY to terminate TLS in the box. See README.md."
       ],
@@ -1839,6 +1850,10 @@
       ],
       "commands": [
         "detect",
+        "pose",
+        "segment",
+        "obb",
+        "classify",
         "reset",
         "list"
       ],
@@ -1886,7 +1901,13 @@
             "field": "detections",
             "codec": "json",
             "shape": "one record per frame",
-            "description": "frame_index, width, height, boxes [x1,y1,x2,y2], class_ids, labels, scores, track_id"
+            "description": "Always frame_index, width, height, boxes [x1,y1,x2,y2], class_ids, labels, scores, track_id. Per task it also carries: keypoints (N,17,3) as [x,y,confidence] plus keypoint_names (pose); polygons, one contour per instance in frame pixels (segment); obb with xywhr and the four corners (obb); classification with top1/top5 and no per-object entries (classify). A task leaves the keys it has nothing to say about at null."
+          },
+          {
+            "field": "masks",
+            "codec": "numpy",
+            "shape": "one (num_instances, H, W) uint8 stack per frame",
+            "when": "command segment with parameters.return_masks"
           },
           {
             "field": "annotated",
@@ -1908,6 +1929,11 @@
         ]
       },
       "constraints": [
+        "The command IS the task, and a checkpoint knows its own task - `pose` needs a -pose checkpoint, `segment` a -seg one. A mismatch is refused with the name of the checkpoint to use rather than running and quietly returning none of the fields you asked for.",
+        "Segmentation polygons come from masks.xy, which ultralytics has already scaled to the frame. The raw masks.data is at the MODEL input size (640x480 for an 810x1080 frame), so it does not line up with the boxes; return_masks rasterises the polygons instead.",
+        "classify cannot be tracked - ultralytics refuses mode=track for it - so classify records carry no track_id. detect, pose, segment and obb all track.",
+        "Default checkpoints per task are yolo26n-<task>.pt (override with YOLO_POSE_WEIGHTS / YOLO_SEG_WEIGHTS / YOLO_OBB_WEIGHTS / YOLO_CLS_WEIGHTS); detect keeps its historical YOLO_WEIGHTS default so existing callers are untouched.",
+        "The bundled obb checkpoint is trained on DOTA aerial imagery and finds nothing in ordinary ground-level photos.",
         "`images` and `video` are mutually exclusive; neither gives empty_request.",
         "conf and iou are clamped to <= 1.0.",
         "Sessions expire (YOLO_SESSION_TTL, default 1800s)."
