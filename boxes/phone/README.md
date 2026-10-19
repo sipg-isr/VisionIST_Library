@@ -7,14 +7,15 @@ from visionist_client import Visionist
 
 phone = Visionist("phonebox:9079")                       # the gRPC port, as always
 setup = phone.run(config={"phone": {"command": "setup",
-                                    "title": "Mug check",
-                                    "labels": ["handle", "chip", "ok"],
-                                    "public_url": "https://lab.example.org/phone"}})
+                                    "parameters": {"title": "Mug check",
+                                                   "labels": ["handle", "chip", "ok"],
+                                                   "public_url": "https://lab.example.org/phone"}}})
 # The reply carries `url` (the pairing link) and data.qr (a PNG): show it, scan it.
 
 after = 0
 while True:
-    r = phone.run(config={"phone": {"command": "get", "after": after, "wait_s": 15}})
+    r = phone.run(config={"phone": {"command": "get",
+                                    "parameters": {"after": after, "wait_s": 15}}})
     # reply config: count, next_after, dropped ...
     # data.meta   : JSON list, one entry per submission:
     #               seq, t, labels, note, sensors, device, n_images, first_image, mime, bytes
@@ -36,7 +37,7 @@ The web port is declared as an `extra_ports` entry in `box.yaml` (`name: web`, e
 
 ## Commands
 
-Config section `phone`; `session_id` at the top of the section (omitted = `"default"`). A session pairs one program with its phones: own page configuration, token, capture queue and results feed.
+Config section `phone`: `command` and `session_id` (omitted = `"default"`) go at the top of the section, and **every option goes inside a `parameters` object**. An option placed at the top level of the section is not an error, it is silently ignored. A session pairs one program with its phones: own page configuration, token, capture queue and results feed.
 
 | command | what it does |
 |---|---|
@@ -56,18 +57,21 @@ The page has a **Stream** button over the live camera. On, it sends frames to th
 Frames are **not queued**. Each one overwrites a single `latest` slot per session (a submitted photo overwrites it too), so a stream can run for hours without filling the box and `get` is untouched. Frames go out one at a time: a slow link lowers the frame rate rather than building a backlog. Streaming needs the live camera, so like the camera it needs https or localhost; over plain http the button is hidden.
 
 ```python
-phone.run(config={"phone": {"command": "setup", "labels": ["person", "car"],
-                            "sensors": ["orientation", "lidar"], "stream_fps": 10,
-                            "public_url": "https://lab.example.org/phone"}})
+phone.run(config={"phone": {"command": "setup",
+                            "parameters": {"labels": ["person", "car"],
+                                           "sensors": ["orientation", "lidar"], "stream_fps": 10,
+                                           "public_url": "https://lab.example.org/phone"}}})
 n = 0
 while True:
-    r = phone.run(config={"phone": {"command": "latest", "after": n, "wait_s": 5}})
+    r = phone.run(config={"phone": {"command": "latest",
+                                    "parameters": {"after": n, "wait_s": 5}}})
     # reply: count, n, streaming; data.images[0] = the JPEG, data.meta = one object
     if r.count == 0:
         continue                       # nothing newer than frame n
     n = r.n
     jpeg, meta = r.images[0], r.meta   # meta["labels"], meta["sensors"], meta["age_s"] ...
-    phone.run(config={"phone": {"command": "show", "text": "3 people", "replace": True}},
+    phone.run(config={"phone": {"command": "show",
+                                "parameters": {"text": "3 people", "replace": True}}},
               data={"image": annotated_jpeg})        # lands in the fixed panel
 ```
 

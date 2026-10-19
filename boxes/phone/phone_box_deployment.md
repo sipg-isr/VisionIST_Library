@@ -66,8 +66,10 @@ from visionist_client import Visionist
 phone = Visionist("localhost:9079")
 r = phone.run(config={"phone": {
     "command": "setup",
-    "title": "Annotate",
-    "labels": ["handle", "chip", "ok"],     # the buttons shown on the phone
+    "parameters": {
+        "title": "Annotate",
+        "labels": ["handle", "chip", "ok"],     # the buttons shown on the phone
+    },
 }})
 
 info = r.config["phone"]
@@ -113,8 +115,8 @@ import json
 after = 0
 while True:
     r = phone.run(config={"phone": {"command": "get",
-                                    "after": after,
-                                    "wait_s": 15}})
+                                    "parameters": {"after": after,
+                                                   "wait_s": 15}}})
     info = r.config["phone"]
     after = info["next_after"]                       # move the bookmark forward
 
@@ -138,9 +140,9 @@ Each loop either returns new submissions or comes back empty after `wait_s` seco
 
 ```python
 phone.run(config={"phone": {"command": "show",
-                            "title": "Result",
-                            "text": "Chip on the rim.",
-                            "ref_seq": item["seq"]}})          # shows "Re #<seq>"
+                            "parameters": {"title": "Result",
+                                           "text": "Chip on the rim.",
+                                           "ref_seq": item["seq"]}}})   # shows "Re #<seq>"
 ```
 
 To send an image or a 3D model as well, pass it as data, for example `data={"image": pathlib.Path("annotated.jpg")}` or `data={"glb": pathlib.Path("map.glb")}`. The phone shows the new result card within a few seconds.
@@ -296,8 +298,10 @@ from visionist_client import Visionist
 phone = Visionist("localhost:9079")
 r = phone.run(config={"phone": {
     "command": "setup",
-    "title": "Annotate",
-    "labels": ["handle", "chip", "ok"],
+    "parameters": {
+        "title": "Annotate",
+        "labels": ["handle", "chip", "ok"],
+    },
 }})
 
 info = r.config["phone"]
