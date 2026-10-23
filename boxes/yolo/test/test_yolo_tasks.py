@@ -110,6 +110,22 @@ check("classify returns a top-5", cfg["status"]=="done" and cl and len(cl["top5"
 check("classify has no boxes and no track ids",
       cl is not None and det[0]["boxes"]==[] and det[0]["track_id"] is None)
 
+# ---- a lone image arrives BARE, not as a one-element list -------------------
+# The envelope cannot express "a list holding one thing", so `--file
+# images=x.jpg` from the MATLAB/Octave bridge puts a plain Value.b on the
+# wire. The box used to refuse it with "data.images must be a list of image
+# bytes"; contract/aux.py's as_list() normalises it.
+cfg, f, det = call(sec("detect"), {"images": img})      # bare bytes, not [img]
+check("a lone image sent bare is accepted",
+      cfg["status"] == "done" and det and len(det) == 1,
+      f"{len(det[0]['boxes'])} boxes" if det else cfg.get("error", "")[:60])
+cfg, f, det = call(sec("pose"), {"images": img})
+check("...for every task, not just detect", cfg["status"] == "done" and det,
+      cfg.get("error", "")[:50])
+cfg, f, det = call(sec("detect"), {"images": [img, img]})
+check("...and lists are unaffected", cfg["status"] == "done" and det and len(det) == 2,
+      f"{len(det) if det else 0} frames")
+
 # ---- the guards ------------------------------------------------------------
 cfg, _, _ = call({"command":"pose","session_id":"t1",
                   "parameters":{"weights":"yolo26n.pt","save_annotated":False}}, {"images":[img]})

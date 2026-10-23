@@ -60,7 +60,7 @@ import zipfile
 sys.path.append("./protos")
 import pipeline_pb2  # noqa: E402
 import pipeline_pb2_grpc  # noqa: E402
-from aux import wrap_value, unwrap_value
+from aux import wrap_value, unwrap_value, as_list
 import serve  # noqa: E402
 
 import cv2  # noqa: E402
@@ -818,10 +818,20 @@ class PipelineService(pipeline_pb2_grpc.PipelineServiceServicer):
                 return _error(str(e))
             spec["task"] = command
 
-            image_bytes_list = unwrap_value(request.data["images"]) if "images" in request.data else None
-            if image_bytes_list is not None and not isinstance(image_bytes_list, list):
-                return _error("data.images must be a list of image bytes")
+            # A field sent ONCE arrives bare (Value.b), not as a one-element
+            # list - the envelope cannot say "a list holding one thing", and
+            # the MATLAB bridge documents the same rule. as_list() is in the
+            # shared contract so this stops being rediscovered per box.
+            image_bytes_list = as_list(
+                unwrap_value(request.data["images"]) if "images" in request.data else None)
             video_bytes = unwrap_value(request.data["video"]) if "video" in request.data else None
+            if isinstance(video_bytes, (list, tuple)):
+                # video is a single blob by contract; be forgiving about a
+                # one-element list rather than failing deep in the decoder.
+                if len(video_bytes) > 1:
+                    return _error("data.video takes one video, got "
+                                  f"{len(video_bytes)}")
+                video_bytes = video_bytes[0] if video_bytes else None
 
             if image_bytes_list and video_bytes:
                 return _error("send either data.images or data.video, not both")
