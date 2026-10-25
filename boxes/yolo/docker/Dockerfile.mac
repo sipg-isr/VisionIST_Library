@@ -1,0 +1,155 @@
+# yolo box — Apple Silicon (M-series) build.
+#
+#   docker build --platform linux/arm64 \
+#       -f boxes/yolo/docker/Dockerfile.mac \
+#       -t sipgisr/visionist-yolo:latest boxes/yolo
+#
+# READ THIS FIRST: this image does NOT use the M4 GPU, and no Dockerfile can
+# make it. Docker Desktop runs Linux containers inside a lightweight VM, and
+# that VM has no access to Metal — there is no `--gpus` equivalent for Apple
+# Silicon, and torch's MPS backend only exists in a process running natively
+# on macOS. Inference here is CPU, on the M4's performance cores.
+#
+# If you need the GPU, run the box natively on the host instead of in Docker:
+#     pip install -r requirements.txt
+#     PORT=8061 python3 src/yolo_service.py
+# and pass `parameters.device: "mps"` per call. ultralytics supports it; the
+# box forwards `device` straight through.
+#
+# What this file DOES buy over the default Dockerfile:
+#
+#   * a native linux/arm64 image. The default one is built FROM
+#     nvidia/cuda:…-ubuntu22.04, which on a Mac means either "no arm64
+#     manifest" or x86 emulation through Rosetta/QEMU — several times slower
+#     for exactly the tensor maths this box spends its time on.
+#   * no CUDA runtime at all. On arm64 the torch wheels are CPU-only, so the
+#     CUDA base would be several GB of files that can never be executed.
+#   * every pinned dependency resolves to a prebuilt cp310 aarch64 wheel
+#     (torch 2.3.1, torchvision 0.18.1, lap, av, opencv-python-headless), so
+#     nothing is compiled during the build.
+#
+# Everything else — the envelope, the service, the ports, the limits from
+# contract/serve.py — is identical to the Linux image. Same box, same
+# contract, different silicon.
+
+ARG WORKSPACE=/workspace
+# SERVICE_NAME identifies the python file with the server
+# The python file should have the name ${SERVICE_NAME}_service.py
+ARG SERVICE_NAME=yolo
+
+
+# --------------------------------------
+# Builder stage to generate .proto files
+# --------------------------------------
+
+# No digest pin here, deliberately: a digest names ONE manifest, and the
+# digests in the Linux Dockerfile are amd64. Pinning them would silently drag
+# this build back into emulation. The tag resolves to the arm64 manifest.
+FROM --platform=linux/arm64 python:3.10-slim-bookworm AS builder
+ARG WORKSPACE
+ARG SERVICE_NAME
+ARG PROTOS_FOLDER_DIR=protos
+
+RUN pip install --upgrade pip && \
+    pip install grpcio grpcio-tools==1.74.0 protobuf
+
+COPY ${PROTOS_FOLDER_DIR} ${WORKSPACE}/
+WORKDIR ${WORKSPACE}
+
+RUN python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. pipeline.proto
+
+
+# -----------------------------
+# Stage to generate final image
+# -----------------------------
+
+# python:3.10 and not 3.11+: the av pin (17.1.0) is the last line that still
+# builds for 3.10, and the aarch64 wheels verified for torch 2.3.1 /
+# torchvision 0.18.1 are cp310.
+FROM --platform=linux/arm64 python:3.10-slim-bookworm
+ARG WORKSPACE
+ARG SERVICE_NAME
+
+ARG USER=runner
+ARG GROUP=runner-group
+ARG SRC=src
+
+# Create non-privileged user and workspace
+RUN addgroup --system ${GROUP} && \
+    adduser --system --no-create-home --ingroup ${GROUP} ${USER} && \
+    mkdir ${WORKSPACE} && \
+    chown -R ${USER}:${GROUP} ${WORKSPACE}
+
+# libgl1 + libglib2.0-0 are OpenCV's runtime shared libraries. On bookworm
+# the package is `libgl1` (libgl1-mesa-glx was dropped); `git` is here
+# because ultralytics shells out to it for some checkpoint sources.
+COPY requirements.txt .
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends libgl1 libglib2.0-0 git && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# --no-cache-dir matters more here than on the Linux image: the arm64 torch
+# wheel is large and Docker Desktop's VM disk is a fixed allocation.
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    rm requirements.txt
+
+# ultralytics depends on non-headless opencv-python (wants libGL); force the
+# headless build back in so it wins the cv2 import.
+RUN pip install --no-cache-dir --force-reinstall --no-deps "opencv-python-headless>=4.10,<5"
+
+# Fail the build rather than ship an image that would run under emulation or
+# carry a CUDA-less torch that silently claims CUDA.
+RUN python3 -c "import platform, torch, cv2, ultralytics, lap, av; \
+    assert platform.machine() == 'aarch64', 'not an arm64 build: ' + platform.machine(); \
+    print('arch       ', platform.machine()); \
+    print('torch      ', torch.__version__, '| cuda:', torch.cuda.is_available()); \
+    print('ultralytics', ultralytics.__version__); \
+    print('cv2        ', cv2.__version__)"
+
+# COPY the shared .proto file to root to meet ai4eu specifications
+COPY --from=builder --chown=${USER}:${GROUP} ${WORKSPACE}/pipeline.proto /
+
+# Copy generated .py files to workspace
+COPY --from=builder --chown=${USER}:${GROUP} ${WORKSPACE}/*.py ${WORKSPACE}/
+
+# Copy the service file and the utils to workspace
+# (rename service file to only service.py for generic usage)
+COPY --chown=${USER}:${GROUP} ${SRC} ${WORKSPACE}
+COPY --chown=${USER}:${GROUP} ${SRC}/${SERVICE_NAME}_service.py ${WORKSPACE}/service.py
+
+USER ${USER}
+WORKDIR ${WORKSPACE}
+
+# $HOME and the cache dirs: ultralytics downloads checkpoints and writes its
+# settings under $HOME and the CWD — both must be writable by the non-root
+# runner. ($HOME points at the workspace because the runner has no home dir.)
+ENV HOME=${WORKSPACE}
+ENV TORCH_HOME=${WORKSPACE}/.cache
+ENV HF_HOME=${WORKSPACE}/.cache
+ENV HF_HUB_CACHE=${WORKSPACE}/.cache
+ENV YOLO_CONFIG_DIR=${WORKSPACE}/.config/Ultralytics
+
+# Optional: bake the default checkpoint so the first call does not wait on a
+# download and the container needs no network at request time.
+#   docker build --build-arg PREFETCH_WEIGHTS=yolo26n.pt …
+#   docker build --build-arg PREFETCH_WEIGHTS="yolo26n.pt yolo26n-pose.pt" …
+# Empty (the default) keeps the Linux image's behaviour: fetched on first use.
+ARG PREFETCH_WEIGHTS=""
+RUN if [ -n "${PREFETCH_WEIGHTS}" ]; then \
+        for w in ${PREFETCH_WEIGHTS}; do \
+            python3 -c "from ultralytics import YOLO; YOLO('$w')" ; \
+        done; \
+        ls -la ${WORKSPACE}/*.pt ; \
+    fi
+
+# CPU-only inference: let the thread count follow whatever Docker Desktop was
+# given, instead of torch guessing from the VM's visible cores. Raise it with
+# `docker run -e OMP_NUM_THREADS=8` once you have set Docker Desktop's CPU
+# allocation (Settings > Resources) to match.
+ENV OMP_NUM_THREADS=4
+ENV MAX_WORKERS=2
+
+EXPOSE 8061
+
+CMD ["python3", "service.py"]
