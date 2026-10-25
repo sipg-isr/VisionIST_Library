@@ -163,6 +163,14 @@ upstream field rename; the envelope checks cover `reset`, `empty_request` and
 every error path; the inference checks run only when the bundles are present and
 are reported as skipped when they are not.
 
+## A worked notebook
+
+`VisionIST/notebooks/mediapipe_walkthrough.ipynb` runs every command against a
+live box with `visionist_client`: the three landmark sets drawn over photos, the
+metric world landmarks in 3D, per-joint visibility, the blendshape scores, the
+padding/`counts` contract and the error paths. It inlines MediaPipe's own
+skeleton edge lists, so it needs no `mediapipe` install on the client side.
+
 ## Not here yet
 
 * **VIDEO / LIVE_STREAM running mode.** Both need monotonic timestamps and keep
