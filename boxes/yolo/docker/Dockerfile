@@ -60,7 +60,7 @@ RUN pip install --upgrade pip && \
 
 # ultralytics depends on non-headless opencv-python (wants libGL, absent in
 # this base image); force the headless build in so it wins the cv2 import.
-RUN pip install --force-reinstall --no-deps opencv-python-headless
+RUN pip install --force-reinstall --no-deps "opencv-python-headless>=4.10,<5"
 
 # COPY the shared .proto file to root to meet ai4eu specifications
 COPY --from=builder --chown=${USER}:${GROUP} ${WORKSPACE}/pipeline.proto /

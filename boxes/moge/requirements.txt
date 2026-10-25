@@ -14,7 +14,10 @@ torchvision>=0.19.0
 git+https://github.com/microsoft/MoGe.git@main
 
 # Image processing
-opencv-python>=4.8.0
+# Pinned below 5: ultralytics and mediapipe both declare opencv with no
+# upper bound, so an unpinned rebuild of a :latest image silently jumps a
+# major version. OpenCV 5 released 2026-01.
+opencv-python>=4.8.0,<5
 numpy>=1.24.0
 
 # Compression for heavy payloads
