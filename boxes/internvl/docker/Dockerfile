@@ -68,7 +68,7 @@ RUN python /tmp/fetch_weights.py
 # Pin by digest once the image is first built: docker inspect --format
 # '{{index .RepoDigests 0}}' pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
 #pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
-FROM  Digest:sha256:c16f4c749e2d9e96878875cdf6cc45cddda1d1a36fddd371dd6f2360f1b6e2a2K
+FROM  sha256:c16f4c749e2d9e96878875cdf6cc45cddda1d1a36fddd371dd6f2360f1b6e2a2K
 
 ARG WORKSPACE
 ARG SERVICE_NAME
