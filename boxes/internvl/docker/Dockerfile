@@ -65,10 +65,9 @@ RUN python /tmp/fetch_weights.py
 # -----------------------------
 # Stage to generate final image
 # -----------------------------
-# Pin by digest once the image is first built: docker inspect --format
-# '{{index .RepoDigests 0}}' pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
-#pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
-FROM  sha256:c16f4c749e2d9e96878875cdf6cc45cddda1d1a36fddd371dd6f2360f1b6e2a2K
+# Pinned by digest. To move the pin: docker buildx imagetools inspect
+# pytorch/pytorch:<tag> | grep -m1 Digest
+FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime@sha256:c16f4c749e2d9e96878875cdf6cc45cddda1d1a36fddd371dd6f2360f1b6e2a2
 
 ARG WORKSPACE
 ARG SERVICE_NAME
