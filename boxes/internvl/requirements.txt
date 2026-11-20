@@ -1,0 +1,18 @@
+# torch 2.7.1 (+ CUDA 12.8) comes from the base image - do not add it here.
+
+# InternVL3 loads through trust_remote_code. The model cards ask for
+# transformers >= 4.37.2; the upper bound keeps an unpinned rebuild of the
+# :latest image from jumping to a release whose internals the remote modelling
+# code has not been checked against. Raise it deliberately, and re-test.
+transformers>=4.45,<4.50
+accelerate>=0.33        # low_cpu_mem_usage and the multi-GPU device_map
+timm                    # imported by InternVL's vision tower code
+einops
+sentencepiece
+
+numpy
+Pillow
+
+grpcio
+grpcio-reflection
+protobuf
