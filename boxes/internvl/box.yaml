@@ -1,0 +1,133 @@
+# internvl - VisionIST box manifest
+# Validated against registry/schema.json by CI.
+# Everything downstream (index, README table, build matrix,
+# fleet generator) is generated from this file.
+
+name: internvl
+key: internvl
+version: 0.1.0
+summary: 'InternVL3 visual question answering: images and a question in, text answers out'
+description: >-
+  A vision-language model behind the standard envelope. Ask a question about
+  each image (captions, attributes, counts, a JSON record) or one question
+  about several images together. Loads any InternVL3 checkpoint, including
+  ones fine-tuned with the InternVL training code such as the OpenFACADES
+  building models. The checkpoint is chosen when the image is built.
+status: experimental
+
+runtime: gpu-or-cpu
+tags: [vlm, multimodal, captioning, vqa]
+
+image:
+  repository: sipgisr/visionist-internvl
+  registries: [dockerhub]
+  platforms: [linux/amd64]
+
+maintainers:
+  - github: jpcosteira
+    name: Joao Paulo Costeira
+    email: jpc@isr.tecnico.ulisboa.pt
+
+commands:
+  values: [ask, info, reset]
+  default: ask
+
+parameters:
+  - name: question
+    type: string
+    default: Describe this image in detail.
+    commands: [ask]
+    description: >-
+      The question, when it is not sent as data `texts`. Giving both is an
+      error.
+  - name: mode
+    type: string
+    enum: [each, together]
+    default: each
+    commands: [ask]
+    description: >-
+      each - one answer per image. together - one answer about all the
+      images, which the model sees as Image-1, Image-2, ...
+  - name: max_tiles
+    type: integer
+    default: 12
+    commands: [ask]
+    description: >-
+      Upper bound on the 448x448 tiles an image is cut into (1-40). Fewer
+      tiles is faster and lighter on GPU memory, more resolves finer detail.
+  - name: use_thumbnail
+    type: boolean
+    default: true
+    commands: [ask]
+    description: Add a whole-image thumbnail tile, as InternVL is trained to expect.
+  - name: max_new_tokens
+    type: integer
+    default: 512
+    commands: [ask]
+    description: Longest answer, in tokens (1-8192).
+  - name: do_sample
+    type: boolean
+    default: false
+    commands: [ask]
+    description: false gives deterministic (greedy) answers.
+  - name: temperature
+    type: number
+    default: 0.7
+    commands: [ask]
+    description: Only with do_sample.
+  - name: top_p
+    type: number
+    default: 0.9
+    commands: [ask]
+    description: Only with do_sample.
+  - name: batch_size
+    type: integer
+    default: 4
+    commands: [ask]
+    description: Images answered per forward pass in mode `each` (1-64).
+  - name: parse_json
+    type: boolean
+    default: false
+    commands: [ask]
+    description: >-
+      Also return each answer parsed as JSON (null where it does not parse),
+      for prompts that ask the model for a JSON record.
+
+data:
+  in:
+    - field: images
+      kind: bb
+      required: true
+      description: JPEG/PNG bytes
+    - field: texts
+      kind: ss
+      description: >-
+        Questions. One for every image, or one per image in order (mode
+        each); exactly one (mode together). Absent - parameters.question.
+  out:
+    - field: answers
+      codec: json
+      shape: list of strings - one per image (each), or one (together)
+      when: command ask
+    - field: parsed
+      codec: json
+      shape: list, same length as answers; null where an answer is not JSON
+      when: parameters.parse_json is true
+
+constraints:
+  - The model is fixed per image - set at build time with --build-arg MODEL_ID - and `info` reports which one is loaded.
+  - A question goes in data `texts` or in parameters.question, not both.
+  - In mode each, the number of questions is 1 or equal to the number of images.
+  - The first `ask` after start waits for the weights to finish loading; `info` and `reset` answer at once.
+  - Images are tiled; GPU memory grows with max_tiles x batch_size. An out-of-memory error names both.
+  - On CPU it runs in fp32 and is slow; use a GPU for anything beyond a quick check.
+
+limits:
+  max_message_mb: 64
+  max_workers: 1
+  note: Generation is serialised on the GPU; more workers only queue.
+
+links:
+  upstream: https://github.com/OpenGVLab/InternVL
+  paper: https://arxiv.org/abs/2504.10479
+  license: MIT (code); see the model card of the checkpoint you build with

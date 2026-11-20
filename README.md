@@ -60,6 +60,7 @@ checkout: `--index` also takes the published
 | [`colmap`](boxes/colmap) | `colmap` | gpu-or-cpu | 9077 | COLMAP ground-truth SfM: camera poses + 3D points + intrinsics from plain images (incremental / GLOMAP global mappers) | `geometry` `ground-truth` `reconstruction` `sfm` |
 | [`d4rt`](boxes/d4rt) | `d4rt` | gpu | 9072 | OpenD4RT 4D reconstruction and tracking - 3D point tracks, point clouds and camera poses from a video | `depth` `dynamic-3d` `geometry` `reconstruction` `tracking` |
 | [`features`](boxes/features) | `features` | cpu | 9071 | SIFT keypoints in the SIFT-Extractor layout: (2+128) x N, annotated JPEGs, MATLAB .mat | `classical` `features` `sift` |
+| [`internvl`](boxes/internvl) | `internvl` | gpu-or-cpu | 9081 | InternVL3 visual question answering: images and a question in, text answers out | `captioning` `multimodal` `vlm` `vqa` |
 | [`lang_sam`](boxes/lang_sam) | `lang_sam` | gpu | 9064 | Text-guided segmentation with LangSAM: phrases in, masks out | `grounding` `language` `segmentation` |
 | [`lightglue`](boxes/lightglue) | `lightglue` | gpu-or-cpu | 9069 | SuperPoint/DISK features and LightGlue matching, pairwise or as a sliding-window stream | `features` `matching` `tracking` |
 | [`mediapipe`](boxes/mediapipe) | `mediapipe` | cpu | 9076 | MediaPipe landmarks: 21-point hands, 33-point body pose, 478-point face mesh, on CPU | `face` `hands` `landmarks` `pose` |

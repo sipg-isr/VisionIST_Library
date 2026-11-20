@@ -12,6 +12,7 @@
 /boxes/colmap/                          @jpcosteira
 /boxes/d4rt/                            @jpcosteira
 /boxes/features/                        @jpcosteira
+/boxes/internvl/                        @jpcosteira
 /boxes/lang_sam/                        @jpcosteira
 /boxes/lightglue/                       @jpcosteira
 /boxes/mediapipe/                       @jpcosteira

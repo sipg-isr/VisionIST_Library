@@ -1,7 +1,7 @@
 {
   "schema": "registry/schema.json",
   "generated_by": "tools/build_index.py",
-  "count": 19,
+  "count": 20,
   "boxes": [
     {
       "name": "abot_recon",
@@ -577,6 +577,87 @@
         "Pure CPU: no device parameter."
       ],
       "path": "boxes/features"
+    },
+    {
+      "name": "internvl",
+      "key": "internvl",
+      "port": 9081,
+      "version": "0.1.0",
+      "summary": "InternVL3 visual question answering: images and a question in, text answers out",
+      "runtime": "gpu-or-cpu",
+      "status": "experimental",
+      "tags": [
+        "captioning",
+        "multimodal",
+        "vlm",
+        "vqa"
+      ],
+      "commands": [
+        "ask",
+        "info",
+        "reset"
+      ],
+      "default_command": "ask",
+      "session": null,
+      "security": {
+        "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 1,
+        "note": "Generation is serialised on the GPU; more workers only queue."
+      },
+      "maintainers": [
+        "jpcosteira"
+      ],
+      "image": {
+        "repository": "sipgisr/visionist-internvl",
+        "registries": [
+          "dockerhub"
+        ],
+        "approx_size_gb": null,
+        "refs": {
+          "dockerhub": "docker.io/sipgisr/visionist-internvl:latest"
+        }
+      },
+      "data": {
+        "in": [
+          {
+            "field": "images",
+            "kind": "bb",
+            "required": true,
+            "description": "JPEG/PNG bytes"
+          },
+          {
+            "field": "texts",
+            "kind": "ss",
+            "description": "Questions. One for every image, or one per image in order (mode each); exactly one (mode together). Absent - parameters.question."
+          }
+        ],
+        "out": [
+          {
+            "field": "answers",
+            "codec": "json",
+            "shape": "list of strings - one per image (each), or one (together)",
+            "when": "command ask"
+          },
+          {
+            "field": "parsed",
+            "codec": "json",
+            "shape": "list, same length as answers; null where an answer is not JSON",
+            "when": "parameters.parse_json is true"
+          }
+        ]
+      },
+      "constraints": [
+        "The model is fixed per image - set at build time with --build-arg MODEL_ID - and `info` reports which one is loaded.",
+        "A question goes in data `texts` or in parameters.question, not both.",
+        "In mode each, the number of questions is 1 or equal to the number of images.",
+        "The first `ask` after start waits for the weights to finish loading; `info` and `reset` answer at once.",
+        "Images are tiled; GPU memory grows with max_tiles x batch_size. An out-of-memory error names both.",
+        "On CPU it runs in fp32 and is slow; use a GPU for anything beyond a quick check."
+      ],
+      "path": "boxes/internvl"
     },
     {
       "name": "lang_sam",
