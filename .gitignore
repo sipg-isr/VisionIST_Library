@@ -32,3 +32,7 @@ boxes/mediapipe/models/pose_landmarker_heavy.task
 boxes/mediapipe/models/pose_landmarker_lite.task
 # END ASSETS
 build-logs/
+
+# Test / reconstruction output artifacts
+*.npz
+boxes/vggt/test/test_piv_out/
