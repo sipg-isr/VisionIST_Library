@@ -60,12 +60,14 @@ checkout: `--index` also takes the published
 | [`colmap`](boxes/colmap) | `colmap` | gpu-or-cpu | 9077 | COLMAP ground-truth SfM: camera poses + 3D points + intrinsics from plain images (incremental / GLOMAP global mappers) | `geometry` `ground-truth` `reconstruction` `sfm` |
 | [`d4rt`](boxes/d4rt) | `d4rt` | gpu | 9072 | OpenD4RT 4D reconstruction and tracking - 3D point tracks, point clouds and camera poses from a video | `depth` `dynamic-3d` `geometry` `reconstruction` `tracking` |
 | [`features`](boxes/features) | `features` | cpu | 9071 | SIFT keypoints in the SIFT-Extractor layout: (2+128) x N, annotated JPEGs, MATLAB .mat | `classical` `features` `sift` |
+| [`internvl`](boxes/internvl) | `internvl` | gpu-or-cpu | 9081 | InternVL3 visual question answering: images and a question in, text answers out | `captioning` `multimodal` `vlm` `vqa` |
 | [`lang_sam`](boxes/lang_sam) | `lang_sam` | gpu | 9064 | Text-guided segmentation with LangSAM: phrases in, masks out | `grounding` `language` `segmentation` |
 | [`lightglue`](boxes/lightglue) | `lightglue` | gpu-or-cpu | 9069 | SuperPoint/DISK features and LightGlue matching, pairwise or as a sliding-window stream | `features` `matching` `tracking` |
 | [`mediapipe`](boxes/mediapipe) | `mediapipe` | cpu | 9076 | MediaPipe landmarks: 21-point hands, 33-point body pose, 478-point face mesh, on CPU | `face` `hands` `landmarks` `pose` |
 | [`moge`](boxes/moge) | `moge` | cuda-only | 9067 | MoGe-3 monocular geometry: metric depth, point map, normals, intrinsics | `depth` `geometry` `monocular` |
 | [`open_clip`](boxes/open_clip) | `open_clip` | gpu-or-cpu | 9073 | OpenCLIP image and text embeddings from any open_clip model and pretrained tag, with cosine similarity and zero-shot probabilities | `clip` `embeddings` `multimodal` `zero-shot` |
 | [`opencv`](boxes/opencv) | `opencv` | gpu-or-cpu | 9065 | Classic feature extraction and matching: SIFT/ORB via FLANN, or SuperPoint/DISK via LightGlue, plus a RANSAC fundamental matrix | `classical` `features` `matching` |
+| [`phone`](boxes/phone) | `phone` | cpu | 9079 + web 9080 | A phone as a capture and annotation terminal: photos or a live camera stream + labels + sensors in, results back, all read over gRPC | `annotation` `camera` `lidar` `phone` `stream` `web` |
 | [`pycv`](boxes/pycv) | `pycv` | cpu | 9075 | Runs user-supplied Python against OpenCV - a script or a one-line expression in, named arrays out | `classical` `opencv` `scripting` |
 | [`sbert`](boxes/sbert) | `sbert` | gpu-or-cpu | 9062 | Sentence-BERT text embeddings and their pairwise similarity | `embeddings` `text` |
 | [`sfm`](boxes/sfm) | `sfm` | cpu | 9074 | SfM: camera poses + 3D points from feature tracks and monocular depth, with partial (missing) tracks | `depth` `geometry` `reconstruction` `sfm` |

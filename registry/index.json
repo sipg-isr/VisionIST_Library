@@ -1,7 +1,7 @@
 {
   "schema": "registry/schema.json",
   "generated_by": "tools/build_index.py",
-  "count": 18,
+  "count": 20,
   "boxes": [
     {
       "name": "abot_recon",
@@ -579,6 +579,87 @@
       "path": "boxes/features"
     },
     {
+      "name": "internvl",
+      "key": "internvl",
+      "port": 9081,
+      "version": "0.1.0",
+      "summary": "InternVL3 visual question answering: images and a question in, text answers out",
+      "runtime": "gpu-or-cpu",
+      "status": "experimental",
+      "tags": [
+        "captioning",
+        "multimodal",
+        "vlm",
+        "vqa"
+      ],
+      "commands": [
+        "ask",
+        "info",
+        "reset"
+      ],
+      "default_command": "ask",
+      "session": null,
+      "security": {
+        "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 1,
+        "note": "Generation is serialised on the GPU; more workers only queue."
+      },
+      "maintainers": [
+        "jpcosteira"
+      ],
+      "image": {
+        "repository": "sipgisr/visionist-internvl",
+        "registries": [
+          "dockerhub"
+        ],
+        "approx_size_gb": null,
+        "refs": {
+          "dockerhub": "docker.io/sipgisr/visionist-internvl:latest"
+        }
+      },
+      "data": {
+        "in": [
+          {
+            "field": "images",
+            "kind": "bb",
+            "required": true,
+            "description": "JPEG/PNG bytes"
+          },
+          {
+            "field": "texts",
+            "kind": "ss",
+            "description": "Questions. One for every image, or one per image in order (mode each); exactly one (mode together). Absent - parameters.question."
+          }
+        ],
+        "out": [
+          {
+            "field": "answers",
+            "codec": "json",
+            "shape": "list of strings - one per image (each), or one (together)",
+            "when": "command ask"
+          },
+          {
+            "field": "parsed",
+            "codec": "json",
+            "shape": "list, same length as answers; null where an answer is not JSON",
+            "when": "parameters.parse_json is true"
+          }
+        ]
+      },
+      "constraints": [
+        "The model is fixed per image - set at build time with --build-arg MODEL_ID - and `info` reports which one is loaded.",
+        "A question goes in data `texts` or in parameters.question, not both.",
+        "In mode each, the number of questions is 1 or equal to the number of images.",
+        "The first `ask` after start waits for the weights to finish loading; `info` and `reset` answer at once.",
+        "Images are tiled; GPU memory grows with max_tiles x batch_size. An out-of-memory error names both.",
+        "On CPU it runs in fp32 and is slow; use a GPU for anything beyond a quick check."
+      ],
+      "path": "boxes/internvl"
+    },
+    {
       "name": "lang_sam",
       "key": "lang_sam",
       "port": 9064,
@@ -761,7 +842,7 @@
       "name": "mediapipe",
       "key": "mediapipe",
       "port": 9076,
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "MediaPipe landmarks: 21-point hands, 33-point body pose, 478-point face mesh, on CPU",
       "runtime": "cpu",
       "status": "experimental",
@@ -1124,6 +1205,127 @@
         "With 1 image the matching fields are ABSENT, not empty - check before reading them."
       ],
       "path": "boxes/opencv"
+    },
+    {
+      "name": "phone",
+      "key": "phone",
+      "port": 9079,
+      "extra_ports": [
+        {
+          "name": "web",
+          "container": 8062,
+          "host": 9080,
+          "protocol": "http",
+          "env": "WEB_PORT",
+          "description": "The capture page and its upload / results API. Plain HTTP behind a reverse proxy; HTTPS itself when TLS_CERT and TLS_KEY are set."
+        }
+      ],
+      "version": "0.1.0",
+      "summary": "A phone as a capture and annotation terminal: photos or a live camera stream + labels + sensors in, results back, all read over gRPC",
+      "runtime": "cpu",
+      "status": "experimental",
+      "tags": [
+        "annotation",
+        "camera",
+        "lidar",
+        "phone",
+        "stream",
+        "web"
+      ],
+      "commands": [
+        "get",
+        "latest",
+        "setup",
+        "show",
+        "status",
+        "reset"
+      ],
+      "default_command": "get",
+      "session": {
+        "key": "session_id",
+        "location": "section",
+        "cumulative": false,
+        "note": "One session pairs a program with its phones - its own page config, token, capture queue and results feed. Omitted means \"default\". `get` is not cumulative - it returns what is newer than `after`."
+      },
+      "security": {
+        "profile": "standard"
+      },
+      "limits": {
+        "max_message_mb": 64,
+        "max_workers": 8,
+        "note": "Each waiting `get` (wait_s > 0) holds a worker, so this is also how many long polls can wait at once."
+      },
+      "maintainers": [
+        "jpcosteira"
+      ],
+      "image": {
+        "repository": "sipgisr/visionist-phone",
+        "registries": [
+          "dockerhub"
+        ],
+        "approx_size_gb": 0.2,
+        "refs": {
+          "dockerhub": "docker.io/sipgisr/visionist-phone:latest"
+        }
+      },
+      "data": {
+        "in": [
+          {
+            "field": "image",
+            "kind": "b",
+            "description": "show: a result image (JPEG, PNG or WebP)"
+          },
+          {
+            "field": "glb",
+            "kind": "b",
+            "description": "show: a binary glTF (.glb) shown as a rotatable 3D view on the phone"
+          },
+          {
+            "field": "text",
+            "kind": "s",
+            "description": "show: text for the card (alternative to parameters.text)"
+          }
+        ],
+        "out": [
+          {
+            "field": "images",
+            "codec": "identity",
+            "when": "get with at least one image; latest",
+            "description": "JPEG/PNG/WebP bytes as the phone sent them, one entry per photo, submissions in order. `meta[i].first_image` and `.n_images` say which entries belong to submission i."
+          },
+          {
+            "field": "meta",
+            "codec": "json",
+            "when": "get, latest",
+            "description": "get: a list, one object per submission returned: seq, t (box clock), client_t (phone clock), device {id, name}, labels [str], note, sensors (a list aligned with the images - each null or {location, orientation, motion} of numbers), n_images, first_image, mime, bytes. Empty list when nothing is new. latest: ONE object (not a list) - n, source (stream|photo), seq (photo only), age_s, t, client_t, device, labels, note, sensors (a one-element list for a frame), size [w, h], n_images, mime, bytes, depth."
+          },
+          {
+            "field": "depth",
+            "codec": "identity",
+            "when": "latest, the frame came with a depth map",
+            "description": "Raw depth map, row-major little-endian, no header. `meta.depth` gives width, height, dtype (float32 or uint16), unit (m or mm), bytes and optional intrinsics."
+          },
+          {
+            "field": "qr",
+            "codec": "identity",
+            "when": "setup, a public URL is known",
+            "description": "PNG of the pairing link."
+          }
+        ]
+      },
+      "constraints": [
+        "Pairing: `setup` returns `token` and `url` (token in the #fragment). A phone without the token gets 401; 10 wrong tokens from one address in 5 minutes lock that address out for the rest of the window.",
+        "`get` never blocks longer than `wait_s` and a long poll holds one gRPC worker: with MAX_WORKERS=8 (default) at most 8 pollers can wait at once.",
+        "Everything is held in RAM: a restart, or `reset`, empties it. Bounds: MAX_QUEUE per session, MAX_STORE_MB overall, TTL_S by age. Past a bound the OLDEST submissions are dropped and `get` reports how many in `dropped`.",
+        "`seq` is per session and only increases. A consumer that remembers `next_after` never reads a submission twice and learns of any it missed.",
+        "A live camera preview needs a secure context (https, or localhost). Over plain http to another host the page falls back to the phone's own camera app (an <input capture>), which works everywhere but has no preview inside the page.",
+        "The gRPC port has no authentication, like every box. On a public host publish only the web port and keep 8061 on a private network.",
+        "Streaming: the page's Stream button POSTs frames to /api/frame, one at a time. Frames are NOT queued: they overwrite a single `latest` slot per session (a photo submission overwrites it too), so a stream never fills the box and `get` is unaffected. `latest` is read-only and does not consume anything; pass the previous `n` as `after` to avoid handling a frame twice. Rates are bounded by FRAME_RATE_PER_S per address and MAX_FRAME_MB per frame.",
+        "LiDAR: a web page cannot read it (iOS Safari has no WebXR; ARKit depth is native-only). With sensors including lidar the page reports sensors.lidar = {available: 0}. A native iPhone/iPad client can POST a depth map (a `depth` part + meta.depth) to /api/frame with the pairing token; `latest` then returns it as data.depth.",
+        "Photos are stored and forwarded as received (JPEG/PNG/WebP); the box never decodes them, so a corrupt image is only found by whoever reads it.",
+        "Deployment: set PUBLIC_URL, TRUST_PROXY, ALLOWED_HOSTS and (only if the proxy does not strip its prefix) BASE_PATH behind a reverse proxy; set TLS_CERT and TLS_KEY to terminate TLS in the box. See README.md."
+      ],
+      "path": "boxes/phone"
     },
     {
       "name": "pycv",
@@ -1729,6 +1931,10 @@
       ],
       "commands": [
         "detect",
+        "pose",
+        "segment",
+        "obb",
+        "classify",
         "reset",
         "list"
       ],
@@ -1776,7 +1982,13 @@
             "field": "detections",
             "codec": "json",
             "shape": "one record per frame",
-            "description": "frame_index, width, height, boxes [x1,y1,x2,y2], class_ids, labels, scores, track_id"
+            "description": "Always frame_index, width, height, boxes [x1,y1,x2,y2], class_ids, labels, scores, track_id. Per task it also carries: keypoints (N,17,3) as [x,y,confidence] plus keypoint_names (pose); polygons, one contour per instance in frame pixels (segment); obb with xywhr and the four corners (obb); classification with top1/top5 and no per-object entries (classify). A task leaves the keys it has nothing to say about at null."
+          },
+          {
+            "field": "masks",
+            "codec": "numpy",
+            "shape": "one (num_instances, H, W) uint8 stack per frame",
+            "when": "command segment with parameters.return_masks"
           },
           {
             "field": "annotated",
@@ -1798,6 +2010,11 @@
         ]
       },
       "constraints": [
+        "The command IS the task, and a checkpoint knows its own task - `pose` needs a -pose checkpoint, `segment` a -seg one. A mismatch is refused with the name of the checkpoint to use rather than running and quietly returning none of the fields you asked for.",
+        "Segmentation polygons come from masks.xy, which ultralytics has already scaled to the frame. The raw masks.data is at the MODEL input size (640x480 for an 810x1080 frame), so it does not line up with the boxes; return_masks rasterises the polygons instead.",
+        "classify cannot be tracked - ultralytics refuses mode=track for it - so classify records carry no track_id. detect, pose, segment and obb all track.",
+        "Default checkpoints per task are yolo26n-<task>.pt (override with YOLO_POSE_WEIGHTS / YOLO_SEG_WEIGHTS / YOLO_OBB_WEIGHTS / YOLO_CLS_WEIGHTS); detect keeps its historical YOLO_WEIGHTS default so existing callers are untouched.",
+        "The bundled obb checkpoint is trained on DOTA aerial imagery and finds nothing in ordinary ground-level photos.",
         "`images` and `video` are mutually exclusive; neither gives empty_request.",
         "conf and iou are clamped to <= 1.0.",
         "Sessions expire (YOLO_SESSION_TTL, default 1800s)."

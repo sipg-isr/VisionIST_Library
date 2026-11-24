@@ -13,7 +13,7 @@ import tempfile
 sys.path.append("./protos")
 import pipeline_pb2 as tapnext_pb2
 import pipeline_pb2_grpc as tapnext_pb2_grpc
-from aux import wrap_value, unwrap_value
+from aux import wrap_value, unwrap_value, as_list
 import serve
 
 import numpy as np
@@ -402,8 +402,10 @@ class PipelineService(tapnext_pb2_grpc.PipelineServiceServicer):
                         sess.full_tracking_data.append((tracks.copy(), visibles.copy()))
 
                 if has_images:
-                    image_bytes_list = unwrap_value(request.data["images"])
-                    if not isinstance(image_bytes_list, list) or len(image_bytes_list) == 0:
+                    # One image arrives bare (Value.b), not as a one-element
+                    # list; as_list() (shared contract) normalises both.
+                    image_bytes_list = as_list(unwrap_value(request.data["images"]))
+                    if len(image_bytes_list) == 0:
                         return tapnext_pb2.Envelope(
                             config_json=json.dumps(
                                 {"tapnext": {"status": "error", "error": "No images in data",

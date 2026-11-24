@@ -5,7 +5,10 @@ grpcio-status
 torch==2.3.1
 torchvision==0.18.1
 numpy==1.26.1
-opencv-python-headless
+# Pinned below 5: ultralytics and mediapipe both declare opencv with no
+# upper bound, so an unpinned rebuild of a :latest image silently jumps a
+# major version. OpenCV 5 released 2026-01.
+opencv-python-headless>=4.10,<5
 ultralytics==8.4.153
 lap>=0.5.12  # tracker linear-assignment (botsort/tracktrack) — NOT in the base image; without it the tracker import AutoUpdates pip at runtime (needs network) or fails
 av==17.1.0  # H.264 for annotated_video (18.x needs py>=3.11; the image runs 3.10)

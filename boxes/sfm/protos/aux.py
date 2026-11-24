@@ -64,3 +64,41 @@ def unwrap_value(val):
     if kind == "bb":
         return list(val.bb.values)
     return None
+
+
+def as_list(value):
+    """Normalize one unwrapped data field into a list.
+
+    THE recurring bug this exists to kill. A field sent ONCE arrives as a
+    bare ``Value.b`` / ``Value.s`` / ``Value.f``, not as a one-element list -
+    the envelope has no way to say "a list that happens to hold one thing",
+    and the MATLAB/Octave bridge documents the same rule ("a field given once
+    is a scalar"). So a box that writes
+
+        images = unwrap_value(request.data["images"])
+        for img in images: ...
+
+    silently iterates the BYTES of a single image, and a box that writes
+
+        if not isinstance(images, list): return error(...)
+
+    refuses a perfectly good one-image request. Both have happened here, more
+    than once, in different boxes.
+
+    Wrap every list-shaped input in this and the question stops coming up::
+
+        images = as_list(unwrap_value(request.data["images"])
+                         if "images" in request.data else None)
+
+    None becomes ``[]``, a bare value becomes ``[value]``, a list is returned
+    as a list. bytes and str are deliberately NOT treated as iterables.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return [bytes(value)]
+    if isinstance(value, (str, float, int)):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]

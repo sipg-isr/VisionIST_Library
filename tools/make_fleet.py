@@ -9,6 +9,12 @@ for a free port in a hand-maintained list.
     python3 tools/make_fleet.py --boxes clip,yolo,moge --out my-fleet
     python3 tools/make_fleet.py --tag features --registry dockerhub --out cpu-fleet
     python3 tools/make_fleet.py --all --runtime cpu --out laptop-fleet
+    python3 tools/make_fleet.py --all --bind 127.0.0.1 --out server-fleet
+
+--bind publishes every box's gRPC port on that host address only (default: all
+interfaces). Boxes have no authentication, so on a public server bind them to
+127.0.0.1 or a private address; a box's extra_ports (the phone box's web page)
+are NOT affected, because those are what a browser is meant to reach.
 
 Images are pulled as :latest - box image names carry no version, so a compose
 file generated once never goes stale: `docker compose pull` is the upgrade.
@@ -116,8 +122,12 @@ LIMIT_ENV = {
 
 
 def environment_lines(box: dict) -> list:
-    """PORT plus whatever limits the box asked for."""
+    """PORT, the in-container number of each extra port that names an env
+    variable for it, and whatever limits the box asked for."""
     env = {"PORT": "8061"}
+    for ep in box.get("extra_ports") or []:
+        if ep.get("env"):
+            env[ep["env"]] = str(ep["container"])
     for field, var in LIMIT_ENV.items():
         value = (box.get("limits") or {}).get(field)
         if value is not None:
@@ -187,7 +197,18 @@ def compose(boxes: list[dict], args) -> tuple[str, list[str]]:
         lines.append(f"  {box['name']}:")
         lines.append(f"    image: {ref}")
         lines.append(f"    container_name: visionist-{box['name']}")
-        lines.append(f'    ports: ["{port_of(box, args, fallback)}:8061"]')
+        bind = getattr(args, "bind", None)
+        main = f"{bind}:" if bind else ""
+        mappings = [f'"{main}{port_of(box, args, fallback)}:8061"']
+        # extra_ports (box.yaml): each has its own permanent host port, issued
+        # from the same ledger, so a partial fleet still has no collisions.
+        mappings += [f'"{ep["host"]}:{ep["container"]}"'
+                     for ep in box.get("extra_ports") or []]
+        lines.append(f'    ports: [{", ".join(mappings)}]')
+        for ep in box.get("extra_ports") or []:
+            lines.append(f"    # {box['name']} {ep['name']} ({ep.get('protocol', 'http')}) "
+                         f"on host port {ep['host']}"
+                         + (f": {ep['description']}" if ep.get("description") else ""))
         lines.extend(environment_lines(box))
         lines.append("    restart: unless-stopped")
         lines.extend(security_lines(box))
@@ -230,8 +251,13 @@ def fleet_json(boxes: list[dict]) -> dict:
 
 
 def readme(boxes: list[dict], args, ports: dict) -> str:
+    def shown(b):
+        extra = "".join(f" + {e['name']} {e['host']}"
+                        for e in b.get("extra_ports") or [])
+        return f"{ports[b['name']]}{extra}"
+
     rows = "\n".join(
-        f"| `{b['name']}` | `{b['key']}` | {b['runtime']} | {ports[b['name']]} | "
+        f"| `{b['name']}` | `{b['key']}` | {b['runtime']} | {shown(b)} | "
         f"{b['summary']} |" for b in boxes)
     gpu = "with" if args.gpu else "without"
     return f"""# VisionIST fleet
@@ -282,6 +308,10 @@ def main() -> int:
     ap.add_argument("--base-port", type=int, default=9061,
                     help="only used with an index that predates "
                          "registry/ports.json; ports otherwise come from the box")
+    ap.add_argument("--bind", default=None, metavar="ADDR",
+                    help="host address for every box's gRPC port, e.g. 127.0.0.1 "
+                         "(default: all interfaces). Extra ports such as the phone "
+                         "box's web page stay on all interfaces")
     ap.add_argument("--gpu", action="store_true",
                     help="add nvidia reservations for boxes that want one")
     ap.add_argument("--webui-image", default=None,

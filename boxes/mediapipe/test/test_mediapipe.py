@@ -228,6 +228,25 @@ def test_pack_real_results():
           ["blendshape_names"][:2] == ["bs0", "bs1"])
 
 
+def test_load_error():
+    """Which of the two load failures the message blames. The libEGL one is
+    not hypothetical: the 0.1.0 image was built without libegl1/libgles2 and
+    every command failed this way, under a message that blamed the bundle."""
+    print("\n== load failures are told apart ==")
+    path = pathlib.Path("/workspace/models/pose_landmarker_heavy.task")
+
+    lib = str(svc.load_error(path, OSError(
+        "libEGL.so.1: cannot open shared object file: No such file or directory")))
+    check("missing library: names the package", "libegl1" in lib, lib[:80])
+    check("missing library: does not blame the bundle",
+          "truncated" not in lib and "re-fetch" not in lib, lib[:80])
+
+    bundle = str(svc.load_error(path, RuntimeError("Unable to open zip archive.")))
+    check("bad bundle: names the file",
+          "pose_landmarker_heavy.task" in bundle and "truncated" in bundle, bundle[:80])
+    check("bad bundle: says how to re-fetch", "fetch_assets" in bundle, bundle[:80])
+
+
 def test_parameters():
     print("\n== parameter parsing ==")
     spec, coords = svc.parse_parameters("hands", {})
@@ -401,6 +420,7 @@ def main():
 
     test_packing()
     test_pack_real_results()
+    test_load_error()
     test_parameters()
     test_envelope(stub)
     if have_models:

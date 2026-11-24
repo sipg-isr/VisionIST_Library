@@ -101,6 +101,20 @@ def load_ports(root: pathlib.Path) -> dict:
     return json.loads(path.read_text())
 
 
+def issued_ports(ledger: dict) -> list[int]:
+    """Every host port the ledger has ever handed out - box ports and extra
+    ports alike, because they come from ONE sequence and must never collide."""
+    out = list((ledger.get("ports") or {}).values())
+    for extras in (ledger.get("extra_ports") or {}).values():
+        out.extend(extras.values())
+    return out
+
+
+def extra_ports_of(manifest: dict) -> list[dict]:
+    """The `extra_ports` a manifest declares, in declaration order."""
+    return list(manifest.get("extra_ports") or [])
+
+
 def assign_ports(ledger: dict, manifests: list[dict]) -> tuple[dict, list[str]]:
     """Give every box a host port, assigning sequentially to new ones.
 
@@ -114,20 +128,39 @@ def assign_ports(ledger: dict, manifests: list[dict]) -> tuple[dict, list[str]]:
     at a different box, which fails as a wrong answer rather than as a refused
     connection.
 
-    Returns the updated ledger and the names of the boxes newly assigned.
+    A box's ``extra_ports`` are issued the same way, right after the box's own
+    port, from the same sequence (so a gRPC port and a web port can never be
+    the same number). They are recorded under ``extra_ports`` in the ledger:
+    ``{"phone": {"web": 9078}}``. The flat ``ports`` map keeps its shape, so a
+    client that only reads box ports is unaffected. An extra port dropped from
+    a manifest stays in the ledger and is never reused, like a retired box's.
+
+    Returns the updated ledger and the names of the boxes newly assigned a
+    main port.
     """
     ports = dict(ledger.get("ports") or {})
+    extras = {b: dict(v) for b, v in (ledger.get("extra_ports") or {}).items()}
     base = int(ledger.get("base_port") or BASE_PORT)
+
+    def next_port() -> int:
+        every = list(ports.values()) + [p for v in extras.values() for p in v.values()]
+        return max(every, default=base - 1) + 1
+
     new = []
     for m in sorted(manifests, key=lambda x: x["name"]):
-        if m["name"] in ports:
-            continue
-        ports[m["name"]] = max(ports.values(), default=base - 1) + 1
-        new.append(m["name"])
+        if m["name"] not in ports:
+            ports[m["name"]] = next_port()
+            new.append(m["name"])
+        for ep in extra_ports_of(m):
+            mine = extras.setdefault(m["name"], {})
+            if ep["name"] not in mine:
+                mine[ep["name"]] = next_port()
     out = dict(ledger)
     out.setdefault("generated_by", "tools/build_index.py")
     out["base_port"] = base
     out["ports"] = ports
+    if extras:
+        out["extra_ports"] = extras
     return out, new
 
 

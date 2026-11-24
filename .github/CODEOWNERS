@@ -12,12 +12,14 @@
 /boxes/colmap/                          @jpcosteira
 /boxes/d4rt/                            @jpcosteira
 /boxes/features/                        @jpcosteira
+/boxes/internvl/                        @jpcosteira
 /boxes/lang_sam/                        @jpcosteira
 /boxes/lightglue/                       @jpcosteira
 /boxes/mediapipe/                       @jpcosteira
 /boxes/moge/                            @jpcosteira
 /boxes/open_clip/                       @jpcosteira
 /boxes/opencv/                          @jpcosteira
+/boxes/phone/                           @jpcosteira
 /boxes/pycv/                            @jpcosteira
 /boxes/sbert/                           @jpcosteira
 /boxes/sfm/                             @jpcosteira

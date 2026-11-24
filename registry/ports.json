@@ -20,6 +20,13 @@
     "pycv": 9075,
     "mediapipe": 9076,
     "colmap": 9077,
-    "abot_recon": 9078
+    "abot_recon": 9078,
+    "phone": 9079,
+    "internvl": 9081
+  },
+  "extra_ports": {
+    "phone": {
+      "web": 9080
+    }
   }
 }

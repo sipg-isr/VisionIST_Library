@@ -67,21 +67,36 @@ ARG SRC=src
 # Create non-privileged user and workspace
 RUN addgroup --system ${GROUP} && \
     adduser --system --no-create-home --ingroup ${GROUP} ${USER} && \
-    mkdir ${WORKSPACE} && \
+    mkdir -p ${WORKSPACE}/.mplcache && \
     chown -R ${USER}:${GROUP} ${WORKSPACE}
 
 ENV XDG_CACHE_DIR=/workspace/.xcache
 # Where the service looks for the .task bundles copied in below.
 ENV MEDIAPIPE_MODEL_DIR=/workspace/models
+# The runner user has no home (--no-create-home), so matplotlib - which comes
+# in with mediapipe's opencv-contrib dependency and is imported at startup -
+# tries /nonexistent/.config/matplotlib, warns, and rebuilds its font cache in
+# a fresh temp dir on every boot. Give it a writable one it keeps.
+ENV MPLCONFIGDIR=/workspace/.mplcache
 
 # Install requirements
 # libgl1 / libglib2.0-0 are OpenCV's runtime shared libraries: mediapipe pulls
 # opencv-contrib-python (not the headless build), so they are needed even
-# though this box never opens a window. Nothing CUDA: MediaPipe's GPU delegate
-# targets Android, iOS and the web, not a Linux server.
+# though this box never opens a window.
+#
+# libegl1 / libgles2 are MediaPipe's own, and they are NOT optional on a
+# CPU-only box: `ldd mediapipe/tasks/c/libmediapipe.so` shows DT_NEEDED entries
+# for libEGL.so.1 and libGLESv2.so.2, so the dynamic loader needs them before
+# any task is created, whatever the bundle or the delegate. Without them every
+# command fails at create_from_options with
+# "libEGL.so.1: cannot open shared object file" - the 0.1.0 image shipped this
+# way. (libegl1 pulls libegl-mesa0, so there is a software EGL behind the
+# loader too.) Still nothing CUDA: MediaPipe's GPU delegate targets Android,
+# iOS and the web, not a Linux server.
 COPY requirements.txt .
 RUN apt update -y && \
-    apt install -y --no-install-recommends libgl1 libglib2.0-0 && \
+    apt install -y --no-install-recommends \
+        libgl1 libglib2.0-0 libegl1 libgles2 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip && \

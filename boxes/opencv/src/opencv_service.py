@@ -236,10 +236,10 @@ class PipelineService(folder_wd_pb2_grpc.PipelineServiceServicer):
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             kps, desc = detector.detectAndCompute(gray, None)
             desc = np.zeros((0, 128), np.float32) if desc is None else desc.astype(np.float32)
-            kp_arr = cv2.KeyPoint_convert(kps)
-            if kp_arr.size == 0:
-                kp_arr = np.zeros((0, 2))
-            keypoints_list.append(kp_arr.astype(np.float32))
+            # KeyPoint_convert returns an empty *tuple* (not an ndarray) when
+            # the image has no keypoints, e.g. a blank wall or a lens cap.
+            kp_arr = np.asarray(cv2.KeyPoint_convert(kps), dtype=np.float32).reshape(-1, 2)
+            keypoints_list.append(kp_arr)
             descriptors_list.append(desc)
 
         out = {

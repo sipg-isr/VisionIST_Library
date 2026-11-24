@@ -24,6 +24,10 @@ maintainers:
 commands:
   values:
   - detect
+  - pose
+  - segment
+  - obb
+  - classify
   - reset
   - list
   default: detect
@@ -61,6 +65,20 @@ parameters:
   default: 1024
   commands:
   - detect
+- name: return_masks
+  type: boolean
+  default: false
+  commands:
+  - segment
+  description: >-
+    Also return full per-instance binary masks, rasterised from the polygons at frame resolution.
+    Off by default because it is roughly 900x the payload of the polygons (1.5M values against
+    1.6k points for five people) and the polygons already carry the shape.
+- name: nms
+  type: boolean
+  description: >-
+    false selects YOLO26's NMS-free one-to-one head (end-to-end inference). Omit to leave
+    ultralytics on its default one-to-many head with NMS.
 - name: weights
   type: string
   default: yolov8n.pt
@@ -77,7 +95,16 @@ data:
   - field: detections
     codec: json
     shape: one record per frame
-    description: frame_index, width, height, boxes [x1,y1,x2,y2], class_ids, labels, scores, track_id
+    description: >-
+      Always frame_index, width, height, boxes [x1,y1,x2,y2], class_ids, labels, scores, track_id.
+      Per task it also carries: keypoints (N,17,3) as [x,y,confidence] plus keypoint_names (pose);
+      polygons, one contour per instance in frame pixels (segment); obb with xywhr and the four
+      corners (obb); classification with top1/top5 and no per-object entries (classify).
+      A task leaves the keys it has nothing to say about at null.
+  - field: masks
+    codec: numpy
+    shape: one (num_instances, H, W) uint8 stack per frame
+    when: command segment with parameters.return_masks
   - field: annotated
     codec: identity
     shape: list of JPEG bytes
@@ -90,6 +117,11 @@ data:
     codec: identity
     shape: ZIP of frames + detections + manifest
 constraints:
+- The command IS the task, and a checkpoint knows its own task - `pose` needs a -pose checkpoint, `segment` a -seg one. A mismatch is refused with the name of the checkpoint to use rather than running and quietly returning none of the fields you asked for.
+- Segmentation polygons come from masks.xy, which ultralytics has already scaled to the frame. The raw masks.data is at the MODEL input size (640x480 for an 810x1080 frame), so it does not line up with the boxes; return_masks rasterises the polygons instead.
+- classify cannot be tracked - ultralytics refuses mode=track for it - so classify records carry no track_id. detect, pose, segment and obb all track.
+- Default checkpoints per task are yolo26n-<task>.pt (override with YOLO_POSE_WEIGHTS / YOLO_SEG_WEIGHTS / YOLO_OBB_WEIGHTS / YOLO_CLS_WEIGHTS); detect keeps its historical YOLO_WEIGHTS default so existing callers are untouched.
+- The bundled obb checkpoint is trained on DOTA aerial imagery and finds nothing in ordinary ground-level photos.
 - '`images` and `video` are mutually exclusive; neither gives empty_request.'
 - conf and iou are clamped to <= 1.0.
 - Sessions expire (YOLO_SESSION_TTL, default 1800s).

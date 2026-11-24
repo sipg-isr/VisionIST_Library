@@ -12,3 +12,10 @@ mediapipe==1.1.0
 # same module in the image, with whichever landed last winning. The service
 # imports cv2 from mediapipe's dependency; libgl1 in the Dockerfile is what
 # that build needs at runtime.
+#
+# What IS listed is an upper bound on that same distribution - mediapipe
+# declares `opencv-contrib-python` with no bound at all, so an unpinned
+# rebuild lands on OpenCV 5 (released 2026-01). Constraining the version is
+# not the same as adding a second cv2 build: this is the package mediapipe
+# already pulls, just bounded.
+opencv-contrib-python>=4.10,<5

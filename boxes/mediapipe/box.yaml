@@ -4,7 +4,7 @@
 # fleet generator) is generated from this file.
 name: mediapipe
 key: mediapipe
-version: 0.1.0
+version: 0.1.1
 summary: 'MediaPipe landmarks: 21-point hands, 33-point body pose, 478-point face mesh, on CPU'
 runtime: cpu
 status: experimental

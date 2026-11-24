@@ -109,6 +109,46 @@ docker build -f docker/Dockerfile --build-arg MODEL_VERSION=1 -t sipgisr/visioni
 republishes. Pin `MODEL_VERSION` and add the hashes `docker/fetch_models.py`
 prints if your deployment needs them.
 
+## Build notes
+
+### System libraries
+
+Four of them, all installed by the Dockerfile:
+
+| needed at load time | Debian package | why |
+|---|---|---|
+| `libGL.so.1`, `libglib-2.0.so.0` | `libgl1`, `libglib2.0-0` | mediapipe depends on `opencv-contrib-python`, not the headless build |
+| `libEGL.so.1`, `libGLESv2.so.2` | `libegl1`, `libgles2` | `mediapipe/tasks/c/libmediapipe.so` has DT_NEEDED entries for both |
+
+**The EGL pair is not optional on a CPU-only box.** They are linked into
+MediaPipe's native library, so the dynamic loader wants them before any task
+is created, whatever the delegate. The 0.1.0 image shipped without them and
+every command failed at `create_from_options` with `libEGL.so.1: cannot open
+shared object file` — a message MediaPipe gives with no mention of a library,
+which is why `load_error()` in the service now tells that case apart from a
+bad bundle. Fixed in 0.1.1.
+
+To confirm it inside a running 0.1.0 container, before rebuilding:
+
+```bash
+docker exec -u root visionist-mediapipe \
+  sh -c 'apt-get update && apt-get install -y libegl1 libgles2'
+docker restart visionist-mediapipe
+```
+
+`MPLCONFIGDIR=/workspace/.mplcache` is set for the same family of reason: the
+`runner` user has no home directory, so matplotlib (another thing
+opencv-contrib drags in) warns at every boot and rebuilds its font cache in a
+fresh temp directory.
+
+### arm64
+
+mediapipe 1.1.0 publishes `manylinux_2_28` wheels for **x86_64 and aarch64**,
+so the box builds natively on Apple Silicon — `docker/Dockerfile.mac` is the
+same recipe with the arm64 base digest. `box.yaml` still declares
+`platforms: [linux/amd64]`: that is what CI publishes, and a multi-arch push
+would be a separate decision.
+
 ## Tests
 
 ```bash
@@ -116,12 +156,20 @@ python3 test/test_mediapipe.py            # starts its own server, no docker
 python3 test/test_mediapipe.py --host 10.0.0.5:9076
 ```
 
-43 checks, no committed fixtures (frames are generated with numpy). They split in
+47 checks, no committed fixtures (frames are generated with numpy). They split in
 three: the packing functions are driven with stand-in landmarks **and** with real
 MediaPipe result objects — neither needs a model bundle, and the second catches an
 upstream field rename; the envelope checks cover `reset`, `empty_request` and
 every error path; the inference checks run only when the bundles are present and
 are reported as skipped when they are not.
+
+## A worked notebook
+
+`VisionIST/notebooks/mediapipe_walkthrough.ipynb` runs every command against a
+live box with `visionist_client`: the three landmark sets drawn over photos, the
+metric world landmarks in 3D, per-joint visibility, the blendshape scores, the
+padding/`counts` contract and the error paths. It inlines MediaPipe's own
+skeleton edge lists, so it needs no `mediapipe` install on the client side.
 
 ## Not here yet
 

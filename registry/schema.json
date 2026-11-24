@@ -151,6 +151,49 @@
         }
       }
     },
+    "extra_ports": {
+      "type": "array",
+      "description": "Ports besides the gRPC one (8061) that the box serves, e.g. the HTTP interface of a box that fronts a phone or a browser. Each gets a permanent HOST port from registry/ports.json, issued from the same sequence as box ports, so it can never collide with one. The fleet generator publishes them; the service reads the in-container number from `env` if given, so it can be moved at launch without a rebuild.",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "container"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "What the port is for: web, metrics. Unique within the box; the key under which the ledger records its host port."
+          },
+          "container": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "The port inside the container. Must differ from 8061 and from the box's other extra ports."
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "http",
+              "https",
+              "tcp"
+            ],
+            "default": "http",
+            "description": "What a client speaks on it. Informational: the fleet publishes the port either way."
+          },
+          "env": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "description": "Environment variable the service reads for its in-container port (like PORT does for 8061). The fleet generator sets it to `container`."
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "session": {
       "type": "object",
       "additionalProperties": false,

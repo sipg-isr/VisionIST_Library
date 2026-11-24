@@ -49,7 +49,7 @@ import time
 sys.path.append("./protos")
 import pipeline_pb2 as folder_wd_pb2  # noqa: E402
 import pipeline_pb2_grpc as folder_wd_pb2_grpc  # noqa: E402
-from aux import wrap_value, unwrap_value
+from aux import wrap_value, unwrap_value  # noqa: E402
 import serve  # noqa: E402
 
 import cv2  # noqa: E402
@@ -128,6 +128,35 @@ def _empty_request():
 def _error(message):
     return folder_wd_pb2.Envelope(
         config_json=json.dumps({BOX_KEY: {"status": "error", "error": message}}))
+
+
+def load_error(path, exc):
+    """Why a landmarker would not build — as a ValueError a caller can act on.
+
+    Two very different failures arrive here with equally unhelpful upstream
+    text, and telling them apart is the whole point:
+
+    * a missing system library — ``libmediapipe.so`` has DT_NEEDED entries for
+      ``libEGL.so.1`` and ``libGLESv2.so.2`` even on a CPU-only box, so an
+      image built without libegl1/libgles2 fails before it ever opens the
+      bundle. That is a Dockerfile problem, not a model problem, and the 0.1.0
+      image shipped with it;
+    * a truncated or wrong-format bundle — MediaPipe says "Unable to open zip
+      archive.", naming nothing.
+    """
+    message = str(exc)
+    if "cannot open shared object file" in message or "undefined symbol" in message:
+        return ValueError(
+            f"MediaPipe's native library could not be loaded ({message}). This is a "
+            f"missing system library in the image, not a problem with {path.name}: "
+            f"libmediapipe.so needs libEGL.so.1 and libGLESv2.so.2 even with no GPU. "
+            f"Rebuild the box (its Dockerfile installs libegl1 and libgles2), or "
+            f"`apt-get install -y libegl1 libgles2` inside the running container to "
+            f"confirm it before rebuilding")
+    return ValueError(
+        f"MediaPipe could not load {path.name} from {path.parent} ({message}) — the "
+        f"bundle looks truncated or is not a .task archive; re-fetch it with "
+        f"docker/fetch_models.py or tools/fetch_assets.py mediapipe")
 
 
 def np_to_bytes(arr: np.ndarray) -> bytes:
@@ -322,18 +351,13 @@ class PipelineService(folder_wd_pb2_grpc.PipelineServiceServicer):
         base = mp_python.BaseOptions(model_asset_path=str(path))
         common = dict(base_options=base, running_mode=mp_vision.RunningMode.IMAGE)
 
-        # MediaPipe's own failure for a truncated or wrong-format bundle is
-        # "Unable to open zip archive.", which says nothing about which file.
-        # A .task is a zip, and the one that cannot be opened is this one.
+        # Upstream names neither the file nor the missing library when this
+        # fails; load_error() decides which of the two it was.
         def _build(factory, options):
             try:
                 return factory(options)
             except Exception as e:
-                raise ValueError(
-                    f"MediaPipe could not load {path.name} from {path.parent} "
-                    f"({e}) — the bundle looks truncated or is not a .task "
-                    f"archive; re-fetch it with docker/fetch_models.py or "
-                    f"tools/fetch_assets.py mediapipe") from None
+                raise load_error(path, e) from None
 
         if command == "hands":
             options = mp_vision.HandLandmarkerOptions(

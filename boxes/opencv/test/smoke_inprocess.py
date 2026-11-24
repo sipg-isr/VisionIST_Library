@@ -116,6 +116,18 @@ r = call(srv, {"opencv": {"command": "match"}}, [b"not an image"])
 check("error on undecodable", section(r).get("status") == "error",
       str(section(r).get("error")))
 
+print("== 8. image with no keypoints (blank wall, lens cap) is not an error ==")
+ok, buf = cv2.imencode(".jpg", np.full((240, 320, 3), 128, np.uint8))
+BLANK = buf.tobytes()
+for label, imgs in (("two images, one blank", [A, BLANK]), ("two blank images", [BLANK, BLANK]),
+                    ("one blank image", [BLANK])):
+    r = call(srv, {"opencv": {"command": "match", "parameters": {}}}, imgs)
+    s = section(r)
+    check(f"{label}: status done", s.get("status") == "done", str(s.get("error", s.get("status"))))
+    if len(imgs) == 2 and s.get("status") == "done":
+        check(f"{label}: no inliers, empty F", s.get("num_inliers") == 0
+              and np.load(io.BytesIO(bytes(unwrap_value(r.data["fundamental_matrix"])))).size == 0)
+
 print()
 print("FAIL -- " + "; ".join(failures) if failures else "PASS -- all in-process cases ok")
 sys.exit(1 if failures else 0)
